@@ -2,39 +2,51 @@
 
 import { TrendingUp, Lock, Users, Target } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
-
-const stats = [
-  {
-    label: "Total Locked",
-    value: "$47,250",
-    change: "+12.5%",
-    icon: Lock,
-    trend: "up",
-  },
-  {
-    label: "Active Goals",
-    value: "8",
-    change: "+2 this month",
-    icon: Target,
-    trend: "up",
-  },
-  {
-    label: "Children",
-    value: "3",
-    change: "All growing",
-    icon: Users,
-    trend: "neutral",
-  },
-  {
-    label: "Growth Rate",
-    value: "4.2%",
-    change: "APY",
-    icon: TrendingUp,
-    trend: "up",
-  },
-]
+import { useChildren } from "@/context/children-context"
+import { useMarinadeApy } from "@/hooks/use-marinade-apy"
 
 export function StatsOverview() {
+  const { children } = useChildren()
+  const marinadeApy = useMarinadeApy()
+
+  const totalSaved = children.reduce((sum, c) => sum + c.totalSaved, 0)
+  const activeGoals = children.reduce((sum, c) => sum + c.goals.filter((g) => g.locked).length, 0)
+  const totalFormatted =
+    totalSaved > 0 ? `$${totalSaved.toLocaleString()}` : "—"
+  const growthLabel = marinadeApy != null ? `${marinadeApy}%` : "—"
+  const growthSub = marinadeApy != null ? "Marinade mSOL APY (30d)" : "Connect & lock as mSOL for APY"
+
+  const stats = [
+    {
+      label: "Total Locked",
+      value: totalFormatted,
+      change: children.length === 0 ? "Add children & lock SOL" : `${children.length} child${children.length === 1 ? "" : "ren"}`,
+      icon: Lock,
+      trend: "neutral" as const,
+    },
+    {
+      label: "Active Goals",
+      value: String(activeGoals),
+      change: activeGoals === 0 ? "No locked goals" : "Locked until unlock date",
+      icon: Target,
+      trend: "neutral" as const,
+    },
+    {
+      label: "Children",
+      value: String(children.length),
+      change: children.length === 0 ? "Add your first child" : "All growing",
+      icon: Users,
+      trend: "neutral" as const,
+    },
+    {
+      label: "Growth Rate",
+      value: growthLabel,
+      change: growthSub,
+      icon: TrendingUp,
+      trend: marinadeApy != null ? ("up" as const) : ("neutral" as const),
+    },
+  ]
+
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
       {stats.map((stat) => (

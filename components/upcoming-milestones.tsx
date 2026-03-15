@@ -2,48 +2,46 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { GraduationCap, Car, Home, Cake } from "lucide-react"
+import { GraduationCap, Car, Home, Cake, Target } from "lucide-react"
+import { useChildren } from "@/context/children-context"
 
-const milestones = [
-  {
-    child: "Emma",
-    avatar: "https://api.dicebear.com/7.x/lorelei/svg?seed=emma",
-    event: "18th Birthday",
-    date: "Aug 15, 2026",
-    amount: "$5,000",
-    icon: Cake,
-    daysUntil: 154,
-  },
-  {
-    child: "Liam",
-    avatar: "https://api.dicebear.com/7.x/lorelei/svg?seed=liam",
-    event: "First Car Fund",
-    date: "Dec 20, 2027",
-    amount: "$8,000",
-    icon: Car,
-    daysUntil: 647,
-  },
-  {
-    child: "Emma",
-    avatar: "https://api.dicebear.com/7.x/lorelei/svg?seed=emma",
-    event: "College Fund",
-    date: "Sep 1, 2028",
-    amount: "$15,000",
-    icon: GraduationCap,
-    daysUntil: 901,
-  },
-  {
-    child: "Sophia",
-    avatar: "https://api.dicebear.com/7.x/lorelei/svg?seed=sophia",
-    event: "Future Home",
-    date: "Jun 15, 2035",
-    amount: "$25,000",
-    icon: Home,
-    daysUntil: 3380,
-  },
-]
+const iconByGoalName: Record<string, typeof GraduationCap> = {
+  "College Fund": GraduationCap,
+  "Education Fund": GraduationCap,
+  "First Car": Car,
+  "First Car Fund": Car,
+  "Future Home": Home,
+  "18th Birthday": Cake,
+  "Summer Camp": Target,
+}
+
+function parseUnlockDate(s: string): Date | null {
+  if (!s) return null
+  const d = new Date(s)
+  return isNaN(d.getTime()) ? null : d
+}
 
 export function UpcomingMilestones() {
+  const { children } = useChildren()
+
+  const milestones = children.flatMap((child) =>
+    child.goals
+      .filter((g) => g.locked)
+      .map((goal) => {
+        const date = parseUnlockDate(goal.unlockDate)
+        return {
+          child: child.name,
+          avatar: child.avatar,
+          event: goal.name,
+          date: date ? date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : goal.unlockDate,
+          amount: `$${goal.current.toLocaleString()}`,
+          icon: iconByGoalName[goal.name] ?? Target,
+          daysUntil: date ? Math.ceil((date.getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : 0,
+        }
+      })
+  )
+  const sorted = [...milestones].sort((a, b) => a.daysUntil - b.daysUntil).filter((m) => m.daysUntil > 0)
+
   return (
     <Card>
       <CardHeader>
@@ -53,38 +51,44 @@ export function UpcomingMilestones() {
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
-        {milestones.map((milestone, index) => (
-          <div
-            key={index}
-            className="flex items-center justify-between rounded-xl bg-muted/50 p-4 transition-colors hover:bg-muted"
-          >
-            <div className="flex items-center gap-4">
-              <div className="relative">
-                <Avatar className="h-10 w-10">
-                  <AvatarImage src={milestone.avatar} alt={milestone.child} />
-                  <AvatarFallback>
-                    {milestone.child.slice(0, 2).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary">
-                  <milestone.icon className="h-3 w-3 text-primary-foreground" />
+        {sorted.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">
+            No upcoming unlocks. Add children and lock SOL to see milestones here.
+          </p>
+        ) : (
+          sorted.map((milestone, index) => (
+            <div
+              key={index}
+              className="flex items-center justify-between rounded-xl bg-muted/50 p-4 transition-colors hover:bg-muted"
+            >
+              <div className="flex items-center gap-4">
+                <div className="relative">
+                  <Avatar className="h-10 w-10">
+                    <AvatarImage src={milestone.avatar} alt={milestone.child} />
+                    <AvatarFallback>
+                      {milestone.child.slice(0, 2).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary">
+                    <milestone.icon className="h-3 w-3 text-primary-foreground" />
+                  </div>
+                </div>
+                <div>
+                  <p className="font-medium text-foreground">{milestone.event}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {milestone.child} • {milestone.date}
+                  </p>
                 </div>
               </div>
-              <div>
-                <p className="font-medium text-foreground">{milestone.event}</p>
+              <div className="text-right">
+                <p className="font-semibold text-foreground">{milestone.amount}</p>
                 <p className="text-sm text-muted-foreground">
-                  {milestone.child} • {milestone.date}
+                  {milestone.daysUntil} days
                 </p>
               </div>
             </div>
-            <div className="text-right">
-              <p className="font-semibold text-foreground">{milestone.amount}</p>
-              <p className="text-sm text-muted-foreground">
-                {milestone.daysUntil} days
-              </p>
-            </div>
-          </div>
-        ))}
+          ))
+        )}
       </CardContent>
     </Card>
   )

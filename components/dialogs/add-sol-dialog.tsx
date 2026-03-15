@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useWallet } from "@/hooks/use-wallet"
 import { useChildren } from "@/context/children-context"
+import { useMarinadeApy } from "@/hooks/use-marinade-apy"
 import { getConnection, createSolVault, createMsolVault } from "@/lib/solana-vault"
 import { PublicKey } from "@solana/web3.js"
 import { toast } from "sonner"
@@ -27,6 +28,7 @@ export function AddSolDialog({
 }) {
   const { address, connect } = useWallet()
   const { children } = useChildren()
+  const marinadeApy = useMarinadeApy()
   const [childName, setChildName] = useState("")
   const [beneficiary, setBeneficiary] = useState("")
   const [amount, setAmount] = useState("")
@@ -107,7 +109,7 @@ export function AddSolDialog({
         <DialogHeader>
           <DialogTitle>Add SOL (lock in vault)</DialogTitle>
           <DialogDescription>
-            SOL is locked in the vault on-chain until the unlock date. Only the child&apos;s wallet can withdraw after that; no one can withdraw early. Optionally lock as mSOL to earn APY (mainnet).
+            SOL is locked in the vault on-chain until the unlock date. Only the child&apos;s wallet can withdraw after that; no one can withdraw early. Optionally lock as mSOL to earn {marinadeApy != null ? `~${marinadeApy}% APY` : "APY"} (mainnet).
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -143,7 +145,7 @@ export function AddSolDialog({
               className="h-4 w-4 rounded border-input"
             />
             <Label htmlFor="lock-msol" className="cursor-pointer">
-              Earn APY — lock as mSOL (mainnet)
+              Earn {marinadeApy != null ? `~${marinadeApy}% ` : ""}APY — lock as mSOL (mainnet)
             </Label>
           </div>
           <div className="space-y-2">
