@@ -2,10 +2,13 @@ import { NextResponse } from "next/server"
 import { Connection, PublicKey } from "@solana/web3.js"
 import { Marinade, MarinadeConfig, BN } from "@marinade.finance/marinade-ts-sdk"
 
-const MAINNET_RPC =
-  process.env.SOLANA_RPC_MAINNET ??
-  process.env.NEXT_PUBLIC_SOLANA_RPC_MAINNET ??
-  "https://api.mainnet-beta.solana.com"
+function getMainnetRpc(): string {
+  const url =
+    process.env.SOLANA_RPC_MAINNET ??
+    process.env.NEXT_PUBLIC_SOLANA_RPC_MAINNET ??
+    "https://api.mainnet-beta.solana.com"
+  return url
+}
 
 export async function POST(request: Request) {
   try {
@@ -19,7 +22,7 @@ export async function POST(request: Request) {
     }
     const creatorPubkey = new PublicKey(creator)
     const amountLamports = Math.floor(amountSol * 1e9)
-    const connection = new Connection(MAINNET_RPC, "confirmed")
+    const connection = new Connection(getMainnetRpc(), "confirmed")
     const config = new MarinadeConfig({
       connection,
       publicKey: creatorPubkey,

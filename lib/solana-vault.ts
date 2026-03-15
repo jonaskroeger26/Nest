@@ -11,10 +11,7 @@ const KIDS_VAULT_PROGRAM_ID = new PublicKey(
 )
 const VAULT_SEED = "vault"
 const TOKEN_VAULT_SEED = "token_vault"
-const DEVNET_RPC =
-  (typeof process !== "undefined" &&
-    process.env?.NEXT_PUBLIC_SOLANA_RPC_DEVNET) ||
-  "https://api.devnet.solana.com"
+// Mainnet only. RPC URL comes from /api/solana-rpc (server .env.local).
 const MAINNET_RPC =
   (typeof process !== "undefined" &&
     process.env?.NEXT_PUBLIC_SOLANA_RPC_MAINNET) ||
@@ -199,16 +196,21 @@ export async function withdrawSolVault(
 let cachedRpcUrl: string | null = null
 export async function getConnection(): Promise<Connection> {
   if (cachedRpcUrl) return new Connection(cachedRpcUrl, "confirmed")
-  try {
-    const res = await fetch("/api/solana-rpc")
-    const { url } = (await res.json()) as { url?: string }
-    if (url) {
-      cachedRpcUrl = url
-      return new Connection(url, "confirmed")
-    }
-  } catch (_) {}
-  cachedRpcUrl = MAINNET_RPC
-  return new Connection(MAINNET_RPC, "confirmed")
+  const res = await fetch("/api/solana-rpc")
+  const data = (await res.json()) as { url?: string; error?: string }
+  if (!res.ok || data.error) {
+    throw new Error(
+      data.error ??
+        "RPC not configured. Add SOLANA_RPC_MAINNET to .env.local (e.g. Helius URL)."
+    )
+  }
+  if (data.url && !data.url.includes("api.mainnet-beta.solana.com")) {
+    cachedRpcUrl = data.url
+    return new Connection(data.url, "confirmed")
+  }
+  throw new Error(
+    "Add SOLANA_RPC_MAINNET to .env.local (Helius). Public RPC returns 403."
+  )
 }
 
 /** Create a token vault (e.g. mSOL). Caller must have the tokens in their ATA. */
