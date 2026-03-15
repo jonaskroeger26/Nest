@@ -2,7 +2,10 @@ import { NextResponse } from "next/server"
 import { Connection, PublicKey } from "@solana/web3.js"
 import { Marinade, MarinadeConfig, BN } from "@marinade.finance/marinade-ts-sdk"
 
-const MAINNET_RPC = "https://api.mainnet-beta.solana.com"
+const MAINNET_RPC =
+  process.env.SOLANA_RPC_MAINNET ??
+  process.env.NEXT_PUBLIC_SOLANA_RPC_MAINNET ??
+  "https://api.mainnet-beta.solana.com"
 
 export async function POST(request: Request) {
   try {

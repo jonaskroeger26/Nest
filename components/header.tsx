@@ -1,19 +1,38 @@
 "use client"
 
+import { useState } from "react"
 import { Bird, Bell, Settings, Wallet } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useWallet } from "@/hooks/use-wallet"
+import { useUser } from "@/context/user-context"
+import { ConnectNameDialog } from "@/components/dialogs/connect-name-dialog"
 
 export function Header() {
   const { address, isConnecting, connect, disconnect, connected } = useWallet()
+  const { userName, setUserName } = useUser()
+  const [showConnectName, setShowConnectName] = useState(false)
 
   const shortAddress = address
     ? `${address.slice(0, 4)}…${address.slice(-4)}`
     : null
 
+  const handleConnectClick = () => {
+    setShowConnectName(true)
+  }
+
+  const handleConnectContinue = async (name: string) => {
+    setUserName(name)
+    await connect()
+  }
+
   return (
     <header className="border-b border-border bg-card">
+      <ConnectNameDialog
+        open={showConnectName}
+        onClose={() => setShowConnectName(false)}
+        onContinue={handleConnectContinue}
+      />
       <div className="flex items-center justify-between px-6 py-4">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
@@ -43,7 +62,7 @@ export function Header() {
               variant="default"
               size="sm"
               className="gap-2"
-              onClick={connect}
+              onClick={handleConnectClick}
               disabled={isConnecting}
             >
               <Wallet className="h-4 w-4" />
@@ -60,8 +79,8 @@ export function Header() {
             <Settings className="h-5 w-5 text-muted-foreground" />
           </Button>
           <Avatar className="h-9 w-9 ring-2 ring-primary/20">
-            <AvatarImage src="https://api.dicebear.com/7.x/lorelei/svg?seed=dad" alt="User" />
-            <AvatarFallback>JD</AvatarFallback>
+            <AvatarImage src={`https://api.dicebear.com/7.x/lorelei/svg?seed=${address ?? userName ?? "user"}`} alt="User" />
+            <AvatarFallback>{(userName ?? shortAddress ?? "?").slice(0, 2).toUpperCase()}</AvatarFallback>
           </Avatar>
         </div>
       </div>

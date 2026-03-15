@@ -1,14 +1,28 @@
 "use client"
 
+import { useEffect, useRef } from "react"
 import { Toaster } from "sonner"
-import { ChildrenProvider } from "@/context/children-context"
+import { UserProvider } from "@/context/user-context"
+import { ChildrenProvider, useChildren } from "@/context/children-context"
 import { ActionsProvider, useActions } from "@/context/actions-context"
+import { useWallet } from "@/hooks/use-wallet"
 import { AddSolDialog } from "@/components/dialogs/add-sol-dialog"
 import { NewChildDialog } from "@/components/dialogs/new-child-dialog"
 import { WithdrawDialog } from "@/components/dialogs/withdraw-dialog"
 import { AutoSaveDialog } from "@/components/dialogs/auto-save-dialog"
 import { GiftDialog } from "@/components/dialogs/gift-dialog"
 import { AddGoalDialog } from "@/components/dialogs/add-goal-dialog"
+
+function ClearDataOnConnect() {
+  const { address } = useWallet()
+  const { resetChildren } = useChildren()
+  const prevAddress = useRef<string | null>(null)
+  useEffect(() => {
+    if (address && !prevAddress.current) resetChildren()
+    prevAddress.current = address ?? null
+  }, [address, resetChildren])
+  return null
+}
 
 function DialogRenderer() {
   const { dialog, addGoalChildName, closeDialog } = useActions()
@@ -30,12 +44,15 @@ function DialogRenderer() {
 
 export function AppProviders({ children }: { children: React.ReactNode }) {
   return (
-    <ChildrenProvider>
-      <ActionsProvider>
-        {children}
-        <DialogRenderer />
-        <Toaster position="bottom-center" richColors />
-      </ActionsProvider>
-    </ChildrenProvider>
+    <UserProvider>
+      <ChildrenProvider>
+        <ActionsProvider>
+          <ClearDataOnConnect />
+          {children}
+          <DialogRenderer />
+          <Toaster position="bottom-center" richColors />
+        </ActionsProvider>
+      </ChildrenProvider>
+    </UserProvider>
   )
 }

@@ -11,8 +11,14 @@ const KIDS_VAULT_PROGRAM_ID = new PublicKey(
 )
 const VAULT_SEED = "vault"
 const TOKEN_VAULT_SEED = "token_vault"
-const DEVNET_RPC = "https://api.devnet.solana.com"
-const MAINNET_RPC = "https://api.mainnet-beta.solana.com"
+const DEVNET_RPC =
+  (typeof process !== "undefined" &&
+    process.env?.NEXT_PUBLIC_SOLANA_RPC_DEVNET) ||
+  "https://api.devnet.solana.com"
+const MAINNET_RPC =
+  (typeof process !== "undefined" &&
+    process.env?.NEXT_PUBLIC_SOLANA_RPC_MAINNET) ||
+  "https://api.mainnet-beta.solana.com"
 const VAULT_DATA_SIZE = 8 + 32 + 32 + 8 + 1 // 81
 const TOKEN_PROGRAM_ID = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
 const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL")
@@ -189,8 +195,9 @@ export async function withdrawSolVault(
   return sig
 }
 
-export function getConnection(useMainnet = false): Connection {
-  return new Connection(useMainnet ? MAINNET_RPC : DEVNET_RPC, "confirmed")
+/** Both plain SOL and mSOL vaults use mainnet. */
+export function getConnection(): Connection {
+  return new Connection(MAINNET_RPC, "confirmed")
 }
 
 /** Create a token vault (e.g. mSOL). Caller must have the tokens in their ATA. */

@@ -7,9 +7,20 @@ import { GrowthChart } from "@/components/growth-chart"
 import { UpcomingMilestones } from "@/components/upcoming-milestones"
 import { QuickActions } from "@/components/quick-actions"
 import { useChildren } from "@/context/children-context"
+import { useUser } from "@/context/user-context"
+
+function getTimeGreeting(): string {
+  const hour = new Date().getHours()
+  if (hour >= 5 && hour < 12) return "Good morning"
+  if (hour >= 12 && hour < 17) return "Good afternoon"
+  return "Good evening"
+}
 
 export function HomeContent() {
   const { children } = useChildren()
+  const { userName } = useUser()
+  const greeting = getTimeGreeting()
+  const greetingLine = userName ? `${greeting}, ${userName}` : greeting
 
   return (
     <div className="min-h-screen bg-background">
@@ -18,7 +29,7 @@ export function HomeContent() {
         <div className="mx-auto max-w-7xl space-y-8">
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-foreground">
-              Good morning, James
+              {greetingLine}
             </h1>
             <p className="mt-1 text-muted-foreground">
               Your children&apos;s futures are growing stronger every day

@@ -58,6 +58,7 @@ type ChildrenContextType = {
   addChild: (child: Omit<Child, "goals" | "totalSaved"> & { goals?: Goal[] }) => void
   addGoal: (childName: string, goal: Goal) => void
   updateChildTotal: (childName: string, addAmount: number) => void
+  resetChildren: () => void
 }
 
 const ChildrenContext = createContext<ChildrenContextType | null>(null)
@@ -95,9 +96,13 @@ export function ChildrenProvider({ children: kids }: { children: React.ReactNode
     )
   }, [])
 
+  const resetChildren = useCallback(() => {
+    setChildren([])
+  }, [])
+
   return (
     <ChildrenContext.Provider
-      value={{ children, addChild, addGoal, updateChildTotal }}
+      value={{ children, addChild, addGoal, updateChildTotal, resetChildren }}
     >
       {kids}
     </ChildrenContext.Provider>
