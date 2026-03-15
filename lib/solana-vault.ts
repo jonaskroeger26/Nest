@@ -195,8 +195,19 @@ export async function withdrawSolVault(
   return sig
 }
 
-/** Both plain SOL and mSOL vaults use mainnet. */
-export function getConnection(): Connection {
+/** Both plain SOL and mSOL vaults use mainnet. Uses server env via /api/solana-rpc so .env.local is applied. */
+let cachedRpcUrl: string | null = null
+export async function getConnection(): Promise<Connection> {
+  if (cachedRpcUrl) return new Connection(cachedRpcUrl, "confirmed")
+  try {
+    const res = await fetch("/api/solana-rpc")
+    const { url } = (await res.json()) as { url?: string }
+    if (url) {
+      cachedRpcUrl = url
+      return new Connection(url, "confirmed")
+    }
+  } catch (_) {}
+  cachedRpcUrl = MAINNET_RPC
   return new Connection(MAINNET_RPC, "confirmed")
 }
 

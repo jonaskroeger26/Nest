@@ -37,8 +37,8 @@ export function WithdrawDialog({
       return
     }
     setLoading(true)
-    const connection = getConnection()
-    getVaultsByBeneficiary(connection, new PublicKey(address))
+    getConnection()
+      .then((connection) => getVaultsByBeneficiary(connection, new PublicKey(address)))
       .then((list) => {
         const now = Math.floor(Date.now() / 1000)
         setVaults(list.filter((v) => v.unlockTimestamp <= now && v.balanceLamports > 0))
@@ -57,7 +57,7 @@ export function WithdrawDialog({
     }
     setWithdrawing(v.vaultPda)
     try {
-      const connection = getConnection()
+      const connection = await getConnection()
       await withdrawSolVault(
         connection,
         new PublicKey(v.creator),

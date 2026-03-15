@@ -63,7 +63,7 @@ export function AddSolDialog({
     }
     setLoading(true)
     try {
-      const connection = getConnection()
+      const connection = await getConnection()
       const creatorPubkey = new PublicKey(address)
       const signTransaction = async (tx: import("@solana/web3.js").Transaction) => {
         const provider = (typeof window !== "undefined" && window.solana) ?? (window as unknown as { phantom?: { solana?: { signTransaction: (t: unknown) => Promise<unknown> } } }).phantom?.solana
