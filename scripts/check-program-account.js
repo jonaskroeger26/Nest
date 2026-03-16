@@ -7,7 +7,7 @@
  * the instruction names the frontend expects.
  */
 
-const PROGRAM_ID = '67KYfnCHNioKkcwWrgJ7N17wCyJjf2VaGtTVd1gtpQAX';
+const PROGRAM_ID = '3R6Ft4K2yYioguKNdxiuEJ2Vhsm2B3KmwBVCAzqtvnv5';
 const EXPECTED_INSTRUCTIONS = ['create_vault', 'withdraw', 'create_token_vault', 'withdraw_token'];
 
 async function check() {
