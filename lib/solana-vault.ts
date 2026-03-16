@@ -7,7 +7,7 @@ import {
 } from "@solana/web3.js"
 
 export const KIDS_VAULT_PROGRAM_ID = new PublicKey(
-  "67KYfnCHNioKkcwWrgJ7N17wCyJjf2VaGtTVd1gtpQAX"
+  "56SHmZiWXW6NhgCQXSoRUct4mub9aAoCYCTXMgqRUrLW"
 )
 
 const VAULT_SEED = "vault"
