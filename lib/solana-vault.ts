@@ -7,7 +7,7 @@ import {
 } from "@solana/web3.js"
 
 export const KIDS_VAULT_PROGRAM_ID = new PublicKey(
-  "56SHmZiWXW6NhgCQXSoRUct4mub9aAoCYCTXMgqRUrLW"
+  "3R6Ft4K2yYioguKNdxiuEJ2Vhsm2B3KmwBVCAzqtvnv5"
 )
 
 const VAULT_SEED = "vault"
@@ -109,7 +109,7 @@ export function deriveATA(owner: PublicKey, mint: PublicKey): PublicKey {
 }
 
 // ---------------------------------------------------------------------------
-// Logging
+// Logging + user-facing error messages
 // ---------------------------------------------------------------------------
 function logTxError(
   where: string,
@@ -118,6 +118,16 @@ function logTxError(
 ) {
   // eslint-disable-next-line no-console
   console.error("[Nest tx error]", where, { error, ...(extra || {}) })
+}
+
+/** Turn known simulation/rpc errors into a short message for the UI. */
+function toUserMessage(e: unknown): string | null {
+  const msg = (e as Error)?.message ?? String(e)
+  if (/program that does not exist/i.test(msg))
+    return "Vault program not deployed on mainnet. Deploy it from the repo (see README)."
+  if (/0x65|InstructionFallbackNotFound|Fallback functions are not supported/i.test(msg))
+    return "Program version mismatch. Redeploy the kids-vault program (see README)."
+  return null
 }
 
 // ---------------------------------------------------------------------------
@@ -289,7 +299,8 @@ export async function createSolVault(
     return sig
   } catch (e) {
     logTxError("createSolVault", e)
-    throw e
+    const userMsg = toUserMessage(e)
+    throw userMsg ? new Error(userMsg) : e
   }
 }
 
@@ -331,7 +342,8 @@ export async function withdrawSolVault(
     return sig
   } catch (e) {
     logTxError("withdrawSolVault", e)
-    throw e
+    const userMsg = toUserMessage(e)
+    throw userMsg ? new Error(userMsg) : e
   }
 }
 
@@ -388,7 +400,8 @@ export async function createTokenVault(
     return sig
   } catch (e) {
     logTxError("createTokenVault", e)
-    throw e
+    const userMsg = toUserMessage(e)
+    throw userMsg ? new Error(userMsg) : e
   }
 }
 
@@ -439,7 +452,8 @@ export async function withdrawTokenVault(
     return sig
   } catch (e) {
     logTxError("withdrawTokenVault", e)
-    throw e
+    const userMsg = toUserMessage(e)
+    throw userMsg ? new Error(userMsg) : e
   }
 }
 
@@ -507,6 +521,7 @@ export async function createMsolVault(
     )
   } catch (e) {
     logTxError("createMsolVault", e)
-    throw e
+    const userMsg = toUserMessage(e)
+    throw userMsg ? new Error(userMsg) : e
   }
 }
