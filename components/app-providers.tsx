@@ -2,10 +2,11 @@
 
 import { useEffect, useRef } from "react"
 import { Toaster } from "sonner"
+import { useRouter, usePathname } from "next/navigation"
 import { UserProvider } from "@/context/user-context"
 import { ChildrenProvider, useChildren } from "@/context/children-context"
 import { ActionsProvider, useActions } from "@/context/actions-context"
-import { useWallet } from "@/hooks/use-wallet"
+import { WalletProvider, useWallet } from "@/hooks/use-wallet"
 import { AddSolDialog } from "@/components/dialogs/add-sol-dialog"
 import { NewChildDialog } from "@/components/dialogs/new-child-dialog"
 import { WithdrawDialog } from "@/components/dialogs/withdraw-dialog"
@@ -21,6 +22,20 @@ function ClearDataOnConnect() {
     if (address && !prevAddress.current) resetChildren()
     prevAddress.current = address ?? null
   }, [address, resetChildren])
+  return null
+}
+
+function RedirectOnConnect() {
+  const { connected } = useWallet()
+  const router = useRouter()
+  const pathname = usePathname()
+
+  useEffect(() => {
+    if (connected && pathname === "/") {
+      router.push("/app")
+    }
+  }, [connected, pathname, router])
+
   return null
 }
 
@@ -44,15 +59,18 @@ function DialogRenderer() {
 
 export function AppProviders({ children }: { children: React.ReactNode }) {
   return (
-    <UserProvider>
-      <ChildrenProvider>
-        <ActionsProvider>
-          <ClearDataOnConnect />
-          {children}
-          <DialogRenderer />
-          <Toaster position="bottom-center" richColors />
-        </ActionsProvider>
-      </ChildrenProvider>
-    </UserProvider>
+    <WalletProvider>
+      <UserProvider>
+        <ChildrenProvider>
+          <ActionsProvider>
+            <ClearDataOnConnect />
+            <RedirectOnConnect />
+            {children}
+            <DialogRenderer />
+            <Toaster position="bottom-center" richColors />
+          </ActionsProvider>
+        </ChildrenProvider>
+      </UserProvider>
+    </WalletProvider>
   )
 }

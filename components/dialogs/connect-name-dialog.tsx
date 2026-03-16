@@ -66,7 +66,7 @@ export function ConnectNameDialog({
               Cancel
             </Button>
             <Button type="submit" disabled={!name.trim() || loading}>
-              {loading ? "Connecting…" : "Continue"}
+              {loading ? "Saving…" : "Save"}
             </Button>
           </DialogFooter>
         </form>

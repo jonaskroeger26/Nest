@@ -108,8 +108,16 @@ export function AddSolDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Add SOL (lock in vault)</DialogTitle>
-          <DialogDescription>
-            SOL is locked in the vault on-chain until the unlock date. Only the child&apos;s wallet can withdraw after that; no one can withdraw early. Optionally lock as mSOL to earn {marinadeApy != null ? `~${marinadeApy}% APY` : "APY"} (mainnet).
+          <DialogDescription className="space-y-1">
+            <span className="block">SOL is locked in the vault on-chain until the unlock date. Only the child&apos;s wallet can withdraw after that; no one can withdraw early.</span>
+            {lockAsMsol && (
+              <span className="block text-muted-foreground">
+                With mSOL: funds stay staked until unlock. After unlock the child withdraws mSOL to their wallet; they can then unstake mSOL → SOL via Marinade if they want.
+              </span>
+            )}
+            {!lockAsMsol && (
+              <span className="block">Optionally lock as mSOL to earn {marinadeApy != null ? `~${marinadeApy}% APY` : "APY"} (mainnet).</span>
+            )}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">

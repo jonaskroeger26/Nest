@@ -1,29 +1,45 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Bird, Bell, Settings, Wallet } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useWallet } from "@/hooks/use-wallet"
 import { useUser } from "@/context/user-context"
 import { ConnectNameDialog } from "@/components/dialogs/connect-name-dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 
 export function Header() {
   const { address, isConnecting, connect, disconnect, connected } = useWallet()
   const { userName, setUserName } = useUser()
   const [showConnectName, setShowConnectName] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
+  const prevAddress = useRef<string | null>(null)
 
   const shortAddress = address
     ? `${address.slice(0, 4)}…${address.slice(-4)}`
     : null
 
+  useEffect(() => {
+    if (address && !prevAddress.current && !userName) setShowConnectName(true)
+    prevAddress.current = address ?? null
+  }, [address, userName])
+
   const handleConnectClick = () => {
-    setShowConnectName(true)
+    connect()
   }
 
-  const handleConnectContinue = async (name: string) => {
+  const handleNameContinue = (name: string) => {
     setUserName(name)
-    await connect()
+    setShowConnectName(false)
   }
 
   return (
@@ -31,7 +47,7 @@ export function Header() {
       <ConnectNameDialog
         open={showConnectName}
         onClose={() => setShowConnectName(false)}
-        onContinue={handleConnectContinue}
+        onContinue={(name) => Promise.resolve(handleNameContinue(name))}
       />
       <div className="flex items-center justify-between px-6 py-4">
         <div className="flex items-center gap-3">
@@ -75,9 +91,33 @@ export function Header() {
               3
             </span>
           </Button>
-          <Button variant="ghost" size="icon">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setShowSettings(true)}
+            aria-label="Settings"
+          >
             <Settings className="h-5 w-5 text-muted-foreground" />
           </Button>
+          <Dialog open={showSettings} onOpenChange={setShowSettings}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Settings</DialogTitle>
+                <DialogDescription>Update your display name for the greeting.</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 pt-2">
+                <div className="space-y-2">
+                  <Label htmlFor="settings-name">Your name</Label>
+                  <Input
+                    id="settings-name"
+                    value={userName ?? ""}
+                    onChange={(e) => setUserName(e.target.value || null)}
+                    placeholder="e.g. James"
+                  />
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
           <Avatar className="h-9 w-9 ring-2 ring-primary/20">
             <AvatarImage src={`https://api.dicebear.com/7.x/lorelei/svg?seed=${address ?? userName ?? "user"}`} alt="User" />
             <AvatarFallback>{(userName ?? shortAddress ?? "?").slice(0, 2).toUpperCase()}</AvatarFallback>
