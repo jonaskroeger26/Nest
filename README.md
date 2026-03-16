@@ -1,11 +1,11 @@
 # Nest (Fatherhood)
 
-Run the app:
+The app uses **Solana mainnet** for vaults and RPC. To run it locally:
 
 ```bash
 npm install
 cp .env.example .env.local
-# Edit .env.local and replace YOUR_HELIUS_API_KEY with your Helius API key (https://helius.dev)
+# Edit .env.local: set YOUR_HELIUS_API_KEY (https://helius.dev) for mainnet RPC
 npm run dev
 ```
 
