@@ -405,7 +405,7 @@ export async function withdrawTokenVault(
   const tokenVaultPDA = deriveTokenVaultPDA(creator, beneficiary, mint)
   const vaultAta = deriveATA(tokenVaultPDA, mint)
   const beneficiaryAta = deriveATA(beneficiary, mint)
-  const disc = await instructionDiscriminator("withdraw_token")
+  const disc = await instructionDiscriminator("withdraw_token_vault")
   const data = Buffer.alloc(8)
   for (let i = 0; i < 8; i++) data[i] = disc[i]
   const ix = new TransactionInstruction({
