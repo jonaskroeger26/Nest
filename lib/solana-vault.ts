@@ -80,6 +80,19 @@ function getAssociatedTokenAddress(owner: PublicKey, mint: PublicKey): PublicKey
   return ata
 }
 
+function logTxError(
+  where: string,
+  error: unknown,
+  extra?: Record<string, unknown>
+) {
+  // Best-effort rich logging to browser console
+  // eslint-disable-next-line no-console
+  console.error("[Nest tx error]", where, {
+    error,
+    ...(extra || {}),
+  })
+}
+
 /** Fetch all SOL vaults where the given pubkey is the beneficiary */
 export async function getVaultsByBeneficiary(
   connection: Connection,
@@ -142,19 +155,24 @@ export async function createSolVault(
     data: Buffer.from(data),
   })
   const tx = new Transaction().add(ix)
-  const { blockhash, lastValidBlockHeight } =
-    await connection.getLatestBlockhash("confirmed")
-  tx.recentBlockhash = blockhash
-  tx.feePayer = creator
-  const signed = await signTransaction(tx)
-  const sig = await connection.sendRawTransaction(signed.serialize(), {
-    skipPreflight: false,
-  })
-  await connection.confirmTransaction(
-    { signature: sig, blockhash, lastValidBlockHeight },
-    "confirmed"
-  )
-  return sig
+  try {
+    const { blockhash, lastValidBlockHeight } =
+      await connection.getLatestBlockhash("confirmed")
+    tx.recentBlockhash = blockhash
+    tx.feePayer = creator
+    const signed = await signTransaction(tx)
+    const sig = await connection.sendRawTransaction(signed.serialize(), {
+      skipPreflight: false,
+    })
+    await connection.confirmTransaction(
+      { signature: sig, blockhash, lastValidBlockHeight },
+      "confirmed"
+    )
+    return sig
+  } catch (e) {
+    logTxError("createSolVault", e)
+    throw e
+  }
 }
 
 /** Withdraw SOL from vault. Only beneficiary can call, and only after unlock_timestamp. */
@@ -177,19 +195,24 @@ export async function withdrawSolVault(
     data,
   })
   const tx = new Transaction().add(ix)
-  const { blockhash, lastValidBlockHeight } =
-    await connection.getLatestBlockhash("confirmed")
-  tx.recentBlockhash = blockhash
-  tx.feePayer = beneficiary
-  const signed = await signTransaction(tx)
-  const sig = await connection.sendRawTransaction(signed.serialize(), {
-    skipPreflight: false,
-  })
-  await connection.confirmTransaction(
-    { signature: sig, blockhash, lastValidBlockHeight },
-    "confirmed"
-  )
-  return sig
+  try {
+    const { blockhash, lastValidBlockHeight } =
+      await connection.getLatestBlockhash("confirmed")
+    tx.recentBlockhash = blockhash
+    tx.feePayer = beneficiary
+    const signed = await signTransaction(tx)
+    const sig = await connection.sendRawTransaction(signed.serialize(), {
+      skipPreflight: false,
+    })
+    await connection.confirmTransaction(
+      { signature: sig, blockhash, lastValidBlockHeight },
+      "confirmed"
+    )
+    return sig
+  } catch (e) {
+    logTxError("withdrawSolVault", e)
+    throw e
+  }
 }
 
 /** Both plain SOL and mSOL vaults use mainnet. Uses server env via /api/solana-rpc so .env.local is applied. */
@@ -248,19 +271,24 @@ export async function createTokenVault(
     data: Buffer.from(data),
   })
   const tx = new Transaction().add(ix)
-  const { blockhash, lastValidBlockHeight } =
-    await connection.getLatestBlockhash("confirmed")
-  tx.recentBlockhash = blockhash
-  tx.feePayer = creator
-  const signed = await signTransaction(tx)
-  const sig = await connection.sendRawTransaction(signed.serialize(), {
-    skipPreflight: false,
-  })
-  await connection.confirmTransaction(
-    { signature: sig, blockhash, lastValidBlockHeight },
-    "confirmed"
-  )
-  return sig
+  try {
+    const { blockhash, lastValidBlockHeight } =
+      await connection.getLatestBlockhash("confirmed")
+    tx.recentBlockhash = blockhash
+    tx.feePayer = creator
+    const signed = await signTransaction(tx)
+    const sig = await connection.sendRawTransaction(signed.serialize(), {
+      skipPreflight: false,
+    })
+    await connection.confirmTransaction(
+      { signature: sig, blockhash, lastValidBlockHeight },
+      "confirmed"
+    )
+    return sig
+  } catch (e) {
+    logTxError("createTokenVault", e)
+    throw e
+  }
 }
 
 /** Deposit SOL to Marinade for mSOL, then lock mSOL in a token vault. Uses mainnet. Builds deposit tx via API to avoid bundling Node-only Marinade/Anchor code in the client. */
@@ -272,49 +300,54 @@ export async function createMsolVault(
   unlockTimestamp: number,
   signTransaction: (tx: Transaction) => Promise<Transaction>
 ): Promise<string> {
-  const res = await fetch("/api/build-marinade-deposit-tx", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      amountSol,
-      creator: creator.toBase58(),
-    }),
-  })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error((err as { error?: string }).error ?? `API ${res.status}`)
+  try {
+    const res = await fetch("/api/build-marinade-deposit-tx", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        amountSol,
+        creator: creator.toBase58(),
+      }),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error((err as { error?: string }).error ?? `API ${res.status}`)
+    }
+    const {
+      transactionBase64,
+      associatedMSolTokenAccountAddress,
+    }: { transactionBase64: string; associatedMSolTokenAccountAddress: string } =
+      await res.json()
+    const binary = atob(transactionBase64)
+    const bytes = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+    const depositTx = Transaction.from(bytes)
+    const signedDeposit = await signTransaction(depositTx)
+    const { blockhash, lastValidBlockHeight } =
+      await connection.getLatestBlockhash("confirmed")
+    const sig1 = await connection.sendRawTransaction(signedDeposit.serialize(), {
+      skipPreflight: false,
+    })
+    await connection.confirmTransaction(
+      { signature: sig1, blockhash, lastValidBlockHeight },
+      "confirmed"
+    )
+    const balance = await connection.getTokenAccountBalance(
+      new PublicKey(associatedMSolTokenAccountAddress)
+    )
+    const amountMsolRaw = BigInt(balance.value.amount)
+    if (amountMsolRaw <= 0n) throw new Error("No mSOL received from deposit")
+    return createTokenVault(
+      connection,
+      creator,
+      beneficiary,
+      MSOL_MINT_MAINNET,
+      amountMsolRaw,
+      unlockTimestamp,
+      signTransaction
+    )
+  } catch (e) {
+    logTxError("createMsolVault", e)
+    throw e
   }
-  const {
-    transactionBase64,
-    associatedMSolTokenAccountAddress,
-  }: { transactionBase64: string; associatedMSolTokenAccountAddress: string } =
-    await res.json()
-  const binary = atob(transactionBase64)
-  const bytes = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-  const depositTx = Transaction.from(bytes)
-  const signedDeposit = await signTransaction(depositTx)
-  const { blockhash, lastValidBlockHeight } =
-    await connection.getLatestBlockhash("confirmed")
-  const sig1 = await connection.sendRawTransaction(signedDeposit.serialize(), {
-    skipPreflight: false,
-  })
-  await connection.confirmTransaction(
-    { signature: sig1, blockhash, lastValidBlockHeight },
-    "confirmed"
-  )
-  const balance = await connection.getTokenAccountBalance(
-    new PublicKey(associatedMSolTokenAccountAddress)
-  )
-  const amountMsolRaw = BigInt(balance.value.amount)
-  if (amountMsolRaw <= 0n) throw new Error("No mSOL received from deposit")
-  return createTokenVault(
-    connection,
-    creator,
-    beneficiary,
-    MSOL_MINT_MAINNET,
-    amountMsolRaw,
-    unlockTimestamp,
-    signTransaction
-  )
 }
