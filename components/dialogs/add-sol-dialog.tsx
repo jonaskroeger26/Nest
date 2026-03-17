@@ -16,6 +16,7 @@ import { useWallet } from "@/hooks/use-wallet"
 import { useChildren } from "@/context/children-context"
 import { useMarinadeApy } from "@/hooks/use-marinade-apy"
 import { getConnection, createSolVault, createMsolVault } from "@/lib/solana-vault"
+import { isMainnetVaults } from "@/lib/solana-config"
 import { PublicKey } from "@solana/web3.js"
 import { toast } from "sonner"
 
@@ -115,8 +116,13 @@ export function AddSolDialog({
                 With mSOL: funds stay staked until unlock. After unlock the child withdraws mSOL to their wallet; they can then unstake mSOL → SOL via Marinade if they want.
               </span>
             )}
-            {!lockAsMsol && (
+            {!lockAsMsol && isMainnetVaults() && (
               <span className="block">Optionally lock as mSOL to earn {marinadeApy != null ? `~${marinadeApy}% APY` : "APY"} (mainnet).</span>
+            )}
+            {!isMainnetVaults() && (
+              <span className="block text-muted-foreground">
+                You&apos;re on testnet — use test SOL only. Switch Phantom to Testnet in settings.
+              </span>
             )}
           </DialogDescription>
         </DialogHeader>
@@ -144,18 +150,20 @@ export function AddSolDialog({
               onChange={(e) => setBeneficiary(e.target.value)}
             />
           </div>
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="lock-msol"
-              checked={lockAsMsol}
-              onChange={(e) => setLockAsMsol(e.target.checked)}
-              className="h-4 w-4 rounded border-input"
-            />
-            <Label htmlFor="lock-msol" className="cursor-pointer">
-              Earn {marinadeApy != null ? `~${marinadeApy}% ` : ""}APY — lock as mSOL (mainnet)
-            </Label>
-          </div>
+          {isMainnetVaults() && (
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="lock-msol"
+                checked={lockAsMsol}
+                onChange={(e) => setLockAsMsol(e.target.checked)}
+                className="h-4 w-4 rounded border-input"
+              />
+              <Label htmlFor="lock-msol" className="cursor-pointer">
+                Earn {marinadeApy != null ? `~${marinadeApy}% ` : ""}APY — lock as mSOL (mainnet)
+              </Label>
+            </div>
+          )}
           <div className="space-y-2">
             <Label>Amount (SOL) *</Label>
             <Input

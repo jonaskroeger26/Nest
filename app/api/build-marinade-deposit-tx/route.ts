@@ -10,7 +10,20 @@ function getMainnetRpc(): string {
   return url
 }
 
+function isMainnetCluster(): boolean {
+  const c = (
+    process.env.NEXT_PUBLIC_SOLANA_CLUSTER ?? "mainnet-beta"
+  ).toLowerCase()
+  return c !== "testnet" && c !== "devnet"
+}
+
 export async function POST(request: Request) {
+  if (!isMainnetCluster()) {
+    return NextResponse.json(
+      { error: "mSOL / Marinade vaults are only available on mainnet." },
+      { status: 400 }
+    )
+  }
   try {
     const body = await request.json()
     const { amountSol, creator } = body as { amountSol: number; creator: string }

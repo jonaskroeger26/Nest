@@ -5,10 +5,7 @@ import {
   SystemProgram,
   TransactionInstruction,
 } from "@solana/web3.js"
-
-export const KIDS_VAULT_PROGRAM_ID = new PublicKey(
-  "3R6Ft4K2yYioguKNdxiuEJ2Vhsm2B3KmwBVCAzqtvnv5"
-)
+import { getKidsVaultProgramId } from "@/lib/solana-config"
 
 const VAULT_SEED = "vault"
 const TOKEN_VAULT_SEED = "token_vault"
@@ -78,7 +75,7 @@ export function deriveVaultPDA(
 ): PublicKey {
   const [pda] = PublicKey.findProgramAddressSync(
     [Buffer.from(VAULT_SEED, "utf8"), creator.toBuffer(), beneficiary.toBuffer()],
-    KIDS_VAULT_PROGRAM_ID
+    getKidsVaultProgramId()
   )
   return pda
 }
@@ -95,7 +92,7 @@ export function deriveTokenVaultPDA(
       beneficiary.toBuffer(),
       mint.toBuffer(),
     ],
-    KIDS_VAULT_PROGRAM_ID
+    getKidsVaultProgramId()
   )
   return pda
 }
@@ -124,9 +121,11 @@ function logTxError(
 function toUserMessage(e: unknown): string | null {
   const msg = (e as Error)?.message ?? String(e)
   if (/program that does not exist/i.test(msg))
-    return "Vault program not deployed on mainnet. Deploy it from the repo (see README)."
+    return "Vault program not deployed on this network. Deploy kids-vault (see fatherhood README)."
   if (/0x65|InstructionFallbackNotFound|Fallback functions are not supported/i.test(msg))
-    return "Program version mismatch. Redeploy the kids-vault program (see README)."
+    return "Program version mismatch. Redeploy kids-vault (see README)."
+  if (/may not be used for executing instructions/i.test(msg))
+    return "Program not executable here. Deploy kids-vault to the cluster your app uses."
   return null
 }
 
@@ -141,16 +140,14 @@ export async function getConnection(): Promise<Connection> {
   if (!res.ok || data.error) {
     throw new Error(
       data.error ??
-        "RPC not configured. Add SOLANA_RPC_MAINNET to .env.local (Helius)."
+        "RPC not configured. For mainnet add SOLANA_RPC_MAINNET (Helius) to .env.local."
     )
   }
-  if (data.url && !data.url.includes("api.mainnet-beta.solana.com")) {
+  if (data.url) {
     cachedRpcUrl = data.url
     return new Connection(data.url, "confirmed")
   }
-  throw new Error(
-    "Add SOLANA_RPC_MAINNET to .env.local (Helius). Public RPC returns 403."
-  )
+  throw new Error("RPC URL missing from /api/solana-rpc response.")
 }
 
 // ---------------------------------------------------------------------------
@@ -160,7 +157,7 @@ export async function getVaultsByBeneficiary(
   connection: Connection,
   beneficiary: PublicKey
 ): Promise<VaultInfo[]> {
-  const accounts = await connection.getProgramAccounts(KIDS_VAULT_PROGRAM_ID, {
+  const accounts = await connection.getProgramAccounts(getKidsVaultProgramId(), {
     filters: [
       { dataSize: VAULT_DATA_SIZE },
       // beneficiary at offset: 8 (disc) + 32 (creator) = 40
@@ -196,7 +193,7 @@ export async function getTokenVaultsByBeneficiary(
   beneficiary: PublicKey,
   mint: PublicKey = MSOL_MINT_MAINNET
 ): Promise<TokenVaultInfo[]> {
-  const accounts = await connection.getProgramAccounts(KIDS_VAULT_PROGRAM_ID, {
+  const accounts = await connection.getProgramAccounts(getKidsVaultProgramId(), {
     filters: [
       { dataSize: TOKEN_VAULT_DATA_SIZE },
       // beneficiary at offset: 8 (disc) + 32 (creator) = 40
@@ -273,7 +270,7 @@ export async function createSolVault(
   view.setBigUint64(8, BigInt(amountLamports), true)
   view.setBigInt64(16, BigInt(unlockTimestamp), true)
   const ix = new TransactionInstruction({
-    programId: KIDS_VAULT_PROGRAM_ID,
+    programId: getKidsVaultProgramId(),
     keys: [
       { pubkey: vaultPDA, isSigner: false, isWritable: true },
       { pubkey: creator, isSigner: true, isWritable: true },
@@ -318,7 +315,7 @@ export async function withdrawSolVault(
   const data = Buffer.alloc(8)
   for (let i = 0; i < 8; i++) data[i] = disc[i]
   const ix = new TransactionInstruction({
-    programId: KIDS_VAULT_PROGRAM_ID,
+    programId: getKidsVaultProgramId(),
     keys: [
       { pubkey: vaultPDA, isSigner: false, isWritable: true },
       { pubkey: beneficiary, isSigner: true, isWritable: true },
@@ -369,7 +366,7 @@ export async function createTokenVault(
   view.setBigUint64(8, amountTokenUnits, true)
   view.setBigInt64(16, BigInt(unlockTimestamp), true)
   const ix = new TransactionInstruction({
-    programId: KIDS_VAULT_PROGRAM_ID,
+    programId: getKidsVaultProgramId(),
     keys: [
       { pubkey: tokenVaultPDA, isSigner: false, isWritable: true },
       { pubkey: vaultAta, isSigner: false, isWritable: true },
@@ -422,7 +419,7 @@ export async function withdrawTokenVault(
   const data = Buffer.alloc(8)
   for (let i = 0; i < 8; i++) data[i] = disc[i]
   const ix = new TransactionInstruction({
-    programId: KIDS_VAULT_PROGRAM_ID,
+    programId: getKidsVaultProgramId(),
     keys: [
       { pubkey: tokenVaultPDA, isSigner: false, isWritable: true },
       { pubkey: vaultAta, isSigner: false, isWritable: true },
