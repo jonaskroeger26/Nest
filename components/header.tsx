@@ -7,6 +7,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useWallet } from "@/hooks/use-wallet"
 import { useUser } from "@/context/user-context"
 import { ConnectNameDialog } from "@/components/dialogs/connect-name-dialog"
+import { isMainnetVaults } from "@/lib/solana-config"
+import { Badge } from "@/components/ui/badge"
 import {
   Dialog,
   DialogContent,
@@ -55,6 +57,14 @@ export function Header() {
             <Bird className="h-5 w-5 text-primary-foreground" />
           </div>
           <span className="text-xl font-semibold text-foreground">Nest</span>
+          {!isMainnetVaults() && (
+            <Badge
+              variant="secondary"
+              className="hidden border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200 sm:inline-flex"
+            >
+              Testnet
+            </Badge>
+          )}
         </div>
 
         <div className="flex items-center gap-4">

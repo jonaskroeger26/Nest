@@ -1,5 +1,7 @@
 # Nest (Fatherhood)
 
+**Runs on testnet until you switch.** Default RPC is **testnet** (matches program `3be5xt…`). On Vercel, don’t set `mainnet-beta` until kids-vault is deployed on mainnet and you’re ready. Use **Phantom → Testnet** and faucet SOL.
+
 ## Testnet (try vaults first)
 
 1. **Deploy kids-vault on testnet** (from workspace root — parent of `fatherhood/`).  
