@@ -183,9 +183,9 @@ function DialogRenderer() {
 export function AppProviders({ children }: { children: React.ReactNode }) {
   return (
     <WalletProvider>
-      <VaultBalancesProvider>
-        <UserProvider>
-          <ChildrenProvider>
+      <UserProvider>
+        <ChildrenProvider>
+          <VaultBalancesProvider>
             <ProfileReloadProvider>
               <ProfileGate>
                 <ActionsProvider>
@@ -196,9 +196,9 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
                 </ActionsProvider>
               </ProfileGate>
             </ProfileReloadProvider>
-          </ChildrenProvider>
-        </UserProvider>
-      </VaultBalancesProvider>
+          </VaultBalancesProvider>
+        </ChildrenProvider>
+      </UserProvider>
     </WalletProvider>
   )
 }
