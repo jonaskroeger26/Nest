@@ -14,6 +14,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
 import { useChildren } from "@/context/children-context"
+import { useProfileReady } from "@/context/profile-ready-context"
+import { useWallet } from "@/hooks/use-wallet"
 
 export function NewChildDialog({
   open,
@@ -23,19 +25,28 @@ export function NewChildDialog({
   onClose: () => void
 }) {
   const { addChild } = useChildren()
+  const profileReady = useProfileReady()
+  const { address } = useWallet()
   const [name, setName] = useState("")
   const [age, setAge] = useState("")
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     const ageNum = parseInt(age, 10)
     if (!name.trim()) return
+    if (address && !profileReady) {
+      toast.error("Still loading your profile — try again in a moment.")
+      return
+    }
+    const childName = name.trim().slice(0, 32)
     addChild({
-      name: name.trim().slice(0, 32),
+      name: childName,
       age: Number.isFinite(ageNum) && ageNum >= 0 ? ageNum : 0,
       avatar: `https://api.dicebear.com/7.x/lorelei/svg?seed=${encodeURIComponent(name.trim())}`,
     })
-    toast.success(`${name.trim()} added. Add goals and lock SOL for them.`)
+    toast.success(
+      `${childName} added. Set their wallet on the profile so locked SOL shows on their card.`
+    )
     onClose()
     setName("")
     setAge("")

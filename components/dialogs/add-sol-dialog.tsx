@@ -17,6 +17,7 @@ import { useChildren } from "@/context/children-context"
 import { useMarinadeApy } from "@/hooks/use-marinade-apy"
 import { getConnection, createSolVault, createMsolVault } from "@/lib/solana-vault"
 import { isMainnetVaults } from "@/lib/solana-config"
+import { useVaultBalances } from "@/context/vault-balances-context"
 import { PublicKey } from "@solana/web3.js"
 import { toast } from "sonner"
 
@@ -28,7 +29,8 @@ export function AddSolDialog({
   onClose: () => void
 }) {
   const { address, connect } = useWallet()
-  const { children } = useChildren()
+  const { children, updateChildTotal } = useChildren()
+  const { refresh: refreshVaults } = useVaultBalances()
   const marinadeApy = useMarinadeApy()
   const [childName, setChildName] = useState("")
   const [beneficiary, setBeneficiary] = useState("")
@@ -93,6 +95,10 @@ export function AddSolDialog({
         )
         toast.success("Vault created! SOL is locked until the unlock date.")
       }
+      if (childName.trim()) {
+        updateChildTotal(childName.trim(), amountNum)
+      }
+      await refreshVaults()
       onClose()
       setBeneficiary("")
       setAmount("")

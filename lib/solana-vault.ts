@@ -185,6 +185,38 @@ export async function getVaultsByBeneficiary(
   return out
 }
 
+/** All SOL vaults created by this wallet (parent dashboard). */
+export async function getVaultsByCreator(
+  connection: Connection,
+  creator: PublicKey
+): Promise<VaultInfo[]> {
+  const accounts = await connection.getProgramAccounts(getKidsVaultProgramId(), {
+    filters: [
+      { dataSize: VAULT_DATA_SIZE },
+      { memcmp: { offset: 8, bytes: creator.toBase58() } },
+    ],
+  })
+  const out: VaultInfo[] = []
+  for (const { pubkey, account } of accounts) {
+    const data = account.data
+    if (data.length < VAULT_DATA_SIZE) continue
+    const creatorPk = new PublicKey(data.slice(8, 40))
+    const beneficiaryPubkey = new PublicKey(data.slice(40, 72))
+    const dv = new DataView(data.buffer, data.byteOffset, data.length)
+    const unlockTimestamp = Number(dv.getBigInt64(72, true))
+    out.push({
+      vaultPda: pubkey.toBase58(),
+      creator: creatorPk.toBase58(),
+      beneficiary: beneficiaryPubkey.toBase58(),
+      unlockTimestamp,
+      balanceLamports: account.lamports,
+      balanceSol: account.lamports / 1e9,
+      isToken: false,
+    })
+  }
+  return out
+}
+
 // ---------------------------------------------------------------------------
 // Fetch token (mSOL) vaults where wallet is the beneficiary
 // ---------------------------------------------------------------------------
@@ -225,6 +257,52 @@ export async function getTokenVaultsByBeneficiary(
       vaultPda: pubkey.toBase58(),
       vaultAta: vaultAta.toBase58(),
       creator: creator.toBase58(),
+      beneficiary: beneficiaryPubkey.toBase58(),
+      mint: mintPubkey.toBase58(),
+      unlockTimestamp,
+      tokenAmount,
+      tokenAmountUi: Number(tokenAmount) / 1e9,
+      isToken: true,
+    })
+  }
+  return out
+}
+
+/** Token vaults created by this wallet (e.g. mSOL locks). */
+export async function getTokenVaultsByCreator(
+  connection: Connection,
+  creator: PublicKey,
+  mint: PublicKey = MSOL_MINT_MAINNET
+): Promise<TokenVaultInfo[]> {
+  const accounts = await connection.getProgramAccounts(getKidsVaultProgramId(), {
+    filters: [
+      { dataSize: TOKEN_VAULT_DATA_SIZE },
+      { memcmp: { offset: 8, bytes: creator.toBase58() } },
+      { memcmp: { offset: 72, bytes: mint.toBase58() } },
+    ],
+  })
+  const out: TokenVaultInfo[] = []
+  for (const { pubkey, account } of accounts) {
+    const data = account.data
+    if (data.length < TOKEN_VAULT_DATA_SIZE) continue
+    const creatorPk = new PublicKey(data.slice(8, 40))
+    const beneficiaryPubkey = new PublicKey(data.slice(40, 72))
+    const mintPubkey = new PublicKey(data.slice(72, 104))
+    const dv = new DataView(data.buffer, data.byteOffset, data.length)
+    const unlockTimestamp = Number(dv.getBigInt64(104, true))
+    const vaultAta = deriveATA(pubkey, mintPubkey)
+    let tokenAmount = 0n
+    try {
+      const bal = await connection.getTokenAccountBalance(vaultAta)
+      tokenAmount = BigInt(bal.value.amount)
+    } catch {
+      continue
+    }
+    if (tokenAmount <= 0n) continue
+    out.push({
+      vaultPda: pubkey.toBase58(),
+      vaultAta: vaultAta.toBase58(),
+      creator: creatorPk.toBase58(),
       beneficiary: beneficiaryPubkey.toBase58(),
       mint: mintPubkey.toBase58(),
       unlockTimestamp,

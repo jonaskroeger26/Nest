@@ -11,9 +11,15 @@ import {
   ResponsiveContainer,
 } from "recharts"
 import { useChildren } from "@/context/children-context"
+import type { Child } from "@/context/children-context"
 
-export function GrowthChart() {
-  const { children } = useChildren()
+export function GrowthChart({
+  childrenOverride,
+}: {
+  childrenOverride?: Child[]
+}) {
+  const { children: ctxChildren } = useChildren()
+  const children = childrenOverride ?? ctxChildren
 
   if (children.length === 0) {
     return (

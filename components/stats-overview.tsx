@@ -3,16 +3,18 @@
 import { TrendingUp, Lock, Users, Target } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { useChildren } from "@/context/children-context"
+import { useVaultBalances } from "@/context/vault-balances-context"
 import { useMarinadeApy } from "@/hooks/use-marinade-apy"
 
 export function StatsOverview() {
   const { children } = useChildren()
+  const { totalSol } = useVaultBalances()
   const marinadeApy = useMarinadeApy()
 
-  const totalSaved = children.reduce((sum, c) => sum + c.totalSaved, 0)
-  const activeGoals = children.reduce((sum, c) => sum + c.goals.filter((g) => g.locked).length, 0)
+  const contextTotal = children.reduce((sum, c) => sum + c.totalSaved, 0)
+  const lockedSol = totalSol > 0 ? totalSol : contextTotal
   const totalFormatted =
-    totalSaved > 0 ? `$${totalSaved.toLocaleString()}` : "—"
+    lockedSol > 0 ? `${lockedSol.toFixed(3)} SOL` : "—"
   const growthLabel = marinadeApy != null ? `${marinadeApy}%` : "—"
   const growthSub = marinadeApy != null ? "Marinade mSOL APY (30d)" : "Connect & lock as mSOL for APY"
 

@@ -9,7 +9,10 @@ import { UpcomingMilestones } from "@/components/upcoming-milestones"
 import { QuickActions } from "@/components/quick-actions"
 import { useChildren } from "@/context/children-context"
 import { useUser } from "@/context/user-context"
+import { useProfileReady } from "@/context/profile-ready-context"
+import { useVaultBalances } from "@/context/vault-balances-context"
 import { useWallet } from "@/hooks/use-wallet"
+import { Spinner } from "@/components/ui/spinner"
 
 // Single words so layout stays stable while cycling.
 const WORDS = ["save", "grow", "dream", "launch"]
@@ -80,13 +83,38 @@ export function HomeContent() {
   const { children } = useChildren()
   const { userName } = useUser()
   const { connected } = useWallet()
+  const profileReady = useProfileReady()
+  const { byBeneficiarySol } = useVaultBalances()
   const greeting = getTimeGreeting()
   const greetingLine = userName ? `${greeting}, ${userName}` : greeting
+
+  const enrichedChildren = children.map((c) => {
+    const chain =
+      c.beneficiaryAddress != null && c.beneficiaryAddress !== ""
+        ? (byBeneficiarySol[c.beneficiaryAddress] ?? 0)
+        : 0
+    return {
+      ...c,
+      totalSaved: Math.max(c.totalSaved, chain),
+    }
+  })
+
+  const usedBeneficiaries = new Set(
+    children.map((c) => c.beneficiaryAddress).filter(Boolean) as string[]
+  )
+  const orphanVaults = Object.entries(byBeneficiarySol).filter(
+    ([b]) => !usedBeneficiaries.has(b)
+  )
 
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      {connected ? (
+      {connected && !profileReady ? (
+        <main className="flex min-h-[50vh] flex-col items-center justify-center gap-3 px-6">
+          <Spinner className="h-8 w-8" />
+          <p className="text-sm text-muted-foreground">Loading your profile…</p>
+        </main>
+      ) : connected ? (
         <main className="px-6 py-8">
           <div className="mx-auto max-w-7xl space-y-8">
             <div>
@@ -100,16 +128,38 @@ export function HomeContent() {
             <StatsOverview />
             <div className="grid gap-8 lg:grid-cols-3">
               <div className="space-y-8 lg:col-span-2">
-                <GrowthChart />
+                <GrowthChart childrenOverride={enrichedChildren} />
                 <div>
                   <h2 className="mb-4 text-xl font-semibold text-foreground">
                     Your Children
                   </h2>
                   <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-                    {children.map((child) => (
+                    {enrichedChildren.map((child) => (
                       <ChildCard key={child.name} {...child} />
                     ))}
                   </div>
+                  {orphanVaults.length > 0 && (
+                    <div className="mt-8 rounded-xl border border-dashed border-border p-4">
+                      <h3 className="mb-2 text-sm font-medium text-foreground">
+                        Locked SOL (no matching child profile)
+                      </h3>
+                      <p className="mb-3 text-xs text-muted-foreground">
+                        Add a child and set their wallet to the same address you used when locking, or these stay listed here.
+                      </p>
+                      <ul className="space-y-2 text-sm">
+                        {orphanVaults.map(([addr, sol]) => (
+                          <li key={addr} className="flex justify-between gap-4">
+                            <span className="truncate font-mono text-xs text-muted-foreground">
+                              {addr.slice(0, 8)}…{addr.slice(-6)}
+                            </span>
+                            <span className="shrink-0 font-medium">
+                              {sol.toFixed(3)} SOL
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="space-y-8">

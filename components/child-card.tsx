@@ -41,9 +41,9 @@ export function ChildCard({ name, age, avatar, totalSaved, goals }: ChildCardPro
           </div>
           <div className="text-right">
             <p className="text-2xl font-bold text-foreground">
-              ${totalSaved.toLocaleString()}
+              {totalSaved > 0 ? `${totalSaved.toFixed(3)} SOL` : "—"}
             </p>
-            <p className="text-sm text-muted-foreground">Total saved</p>
+            <p className="text-sm text-muted-foreground">Locked (on-chain)</p>
           </div>
         </div>
       </CardHeader>
