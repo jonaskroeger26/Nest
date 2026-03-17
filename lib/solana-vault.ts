@@ -121,8 +121,11 @@ function logTxError(
 /** Turn known simulation/rpc errors into a short message for the UI. */
 function toUserMessage(e: unknown): string | null {
   const msg = (e as Error)?.message ?? String(e)
-  if (/program that does not exist/i.test(msg))
-    return "Vault program not deployed on this network. Deploy kids-vault (see fatherhood README)."
+  if (/program that does not exist|Attempt to load a program/i.test(msg))
+    return (
+      "Vault program is not on this network. If you deployed on testnet, set Vercel " +
+      "NEXT_PUBLIC_SOLANA_CLUSTER=testnet. For mainnet, deploy kids-vault there and set the program ID."
+    )
   if (/0x65|InstructionFallbackNotFound|Fallback functions are not supported/i.test(msg))
     return "Program version mismatch. Redeploy kids-vault (see README)."
   if (/may not be used for executing instructions/i.test(msg))

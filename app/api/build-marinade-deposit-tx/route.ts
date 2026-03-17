@@ -11,10 +11,8 @@ function getMainnetRpc(): string {
 }
 
 function isMainnetCluster(): boolean {
-  const c = (
-    process.env.NEXT_PUBLIC_SOLANA_CLUSTER ?? "mainnet-beta"
-  ).toLowerCase()
-  return c !== "testnet" && c !== "devnet"
+  const c = (process.env.NEXT_PUBLIC_SOLANA_CLUSTER ?? "testnet").toLowerCase()
+  return c === "mainnet" || c === "mainnet-beta"
 }
 
 export async function POST(request: Request) {

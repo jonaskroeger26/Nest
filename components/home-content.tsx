@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { Header } from "@/components/header"
+import { VaultProgramBanner } from "@/components/vault-program-banner"
 import { StatsOverview } from "@/components/stats-overview"
 import { ChildCard } from "@/components/child-card"
 import { GrowthChart } from "@/components/growth-chart"
@@ -118,6 +119,7 @@ export function HomeContent() {
       ) : connected ? (
         <main className="px-6 py-8">
           <div className="mx-auto max-w-7xl space-y-8">
+            <VaultProgramBanner />
             <div>
               <h1 className="text-3xl font-bold tracking-tight text-foreground">
                 {greetingLine}

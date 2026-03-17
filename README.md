@@ -44,6 +44,13 @@
 
 On testnet, only **plain SOL vaults** work (mSOL / Marinade is mainnet-only).
 
+## Vercel
+
+The app **defaults to testnet** (same as default program `3be5xt…`). If you see **“program does not exist”**, you were on **mainnet** RPC with a **testnet-only** program.
+
+- **Testnet demo:** set `NEXT_PUBLIC_SOLANA_CLUSTER=testnet` (or omit — default), `NEXT_PUBLIC_KIDS_VAULT_PROGRAM_ID=3be5xt…`, Phantom on Testnet.
+- **Mainnet:** `NEXT_PUBLIC_SOLANA_CLUSTER=mainnet-beta`, Helius RPC envs, deploy kids-vault to mainnet, set that program ID.
+
 ## Mainnet
 
 ```bash

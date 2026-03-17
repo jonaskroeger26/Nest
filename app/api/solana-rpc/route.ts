@@ -4,7 +4,7 @@ const PUBLIC_MAINNET = "https://api.mainnet-beta.solana.com"
 
 function clusterFromEnv(): "mainnet-beta" | "testnet" | "devnet" {
   const c = (
-    process.env.NEXT_PUBLIC_SOLANA_CLUSTER ?? "mainnet-beta"
+    process.env.NEXT_PUBLIC_SOLANA_CLUSTER ?? "testnet"
   ).toLowerCase()
   if (c === "testnet") return "testnet"
   if (c === "devnet") return "devnet"
