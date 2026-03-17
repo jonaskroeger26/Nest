@@ -11,6 +11,7 @@ import { useChildren } from "@/context/children-context"
 import { useUser } from "@/context/user-context"
 import { useProfileReady } from "@/context/profile-ready-context"
 import { useVaultBalances } from "@/context/vault-balances-context"
+import { useSolPrice, solToUsdFormatted } from "@/hooks/use-sol-price"
 import { useWallet } from "@/hooks/use-wallet"
 import { Spinner } from "@/components/ui/spinner"
 
@@ -122,7 +123,14 @@ export function HomeContent() {
                 {greetingLine}
               </h1>
               <p className="mt-1 text-muted-foreground">
-                Your children&apos;s futures are growing stronger every day
+                {profileUsd ? (
+                  <>
+                    About <span className="font-medium text-foreground">{profileUsd}</span>{" "}
+                    locked at today&apos;s SOL price
+                  </>
+                ) : (
+                  <>Your children&apos;s futures are growing stronger every day.</>
+                )}
               </p>
             </div>
             <StatsOverview />
@@ -152,8 +160,17 @@ export function HomeContent() {
                             <span className="truncate font-mono text-xs text-muted-foreground">
                               {addr.slice(0, 8)}…{addr.slice(-6)}
                             </span>
-                            <span className="shrink-0 font-medium">
-                              {sol.toFixed(3)} SOL
+                            <span className="shrink-0 text-right font-medium">
+                              <span className="block">
+                                {usdPerSol != null
+                                  ? solToUsdFormatted(sol, usdPerSol)
+                                  : `${sol.toFixed(3)} SOL`}
+                              </span>
+                              {usdPerSol != null && (
+                                <span className="text-xs text-muted-foreground">
+                                  {sol.toFixed(3)} SOL
+                                </span>
+                              )}
                             </span>
                           </li>
                         ))}

@@ -12,6 +12,7 @@ import {
 } from "recharts"
 import { useChildren } from "@/context/children-context"
 import type { Child } from "@/context/children-context"
+import { useSolPrice } from "@/hooks/use-sol-price"
 
 export function GrowthChart({
   childrenOverride,
@@ -20,6 +21,8 @@ export function GrowthChart({
 }) {
   const { children: ctxChildren } = useChildren()
   const children = childrenOverride ?? ctxChildren
+  const { usdPerSol } = useSolPrice()
+  const usd = usdPerSol ?? null
 
   if (children.length === 0) {
     return (
@@ -41,11 +44,25 @@ export function GrowthChart({
     )
   }
 
-  const total = children.reduce((sum, c) => sum + c.totalSaved, 0)
+  const totalSol = children.reduce((sum, c) => sum + c.totalSaved, 0)
+  const toVal = (sol: number) => (usd != null ? sol * usd : sol)
+  const total = toVal(totalSol)
   const data = [
     { month: "Start", total: 0, ...Object.fromEntries(children.map((_, i) => [`child${i}`, 0])) },
-    { month: "Now", total, ...Object.fromEntries(children.map((c, i) => [`child${i}`, c.totalSaved])) },
+    {
+      month: "Now",
+      total,
+      ...Object.fromEntries(
+        children.map((c, i) => [`child${i}`, toVal(c.totalSaved)])
+      ),
+    },
   ]
+  const fmtY = (value: number) =>
+    usd != null
+      ? value >= 1000
+        ? `$${(value / 1000).toFixed(1)}k`
+        : `$${Math.round(value)}`
+      : `${value.toFixed(2)} SOL`
   const colors = ["oklch(0.55 0.15 160)", "oklch(0.70 0.12 80)", "oklch(0.45 0.10 200)"]
 
   return (
@@ -55,7 +72,7 @@ export function GrowthChart({
           <div>
             <CardTitle className="text-lg font-semibold">Portfolio Growth</CardTitle>
             <p className="text-sm text-muted-foreground">
-              Your children&apos;s funds over time
+              {usd != null ? "Value at live SOL price" : "SOL per child (USD when price loads)"}
             </p>
           </div>
           <div className="flex flex-wrap gap-4">
@@ -73,7 +90,7 @@ export function GrowthChart({
       </CardHeader>
       <CardContent>
         <div className="h-[300px] w-full">
-          {total === 0 ? (
+          {totalSol === 0 ? (
             <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-border bg-muted/30">
               <p className="text-sm text-muted-foreground">
                 Lock SOL for your children to see totals here.
@@ -104,7 +121,7 @@ export function GrowthChart({
                   axisLine={false}
                   tickLine={false}
                   className="text-xs fill-muted-foreground"
-                  tickFormatter={(value) => `$${value >= 1000 ? `${(value / 1000).toFixed(0)}k` : value}`}
+                  tickFormatter={(value) => fmtY(value)}
                 />
                 <Tooltip
                   contentStyle={{
@@ -113,7 +130,12 @@ export function GrowthChart({
                     borderRadius: "0.75rem",
                     boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
                   }}
-                  formatter={(value: number) => [`$${value.toLocaleString()}`, ""]}
+                  formatter={(value: number) => [
+                    usd != null
+                      ? `$${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                      : `${value.toFixed(3)} SOL`,
+                    "",
+                  ]}
                 />
                 {children.map((c, i) => (
                   <Area

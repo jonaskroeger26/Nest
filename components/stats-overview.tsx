@@ -5,10 +5,12 @@ import { Card, CardContent } from "@/components/ui/card"
 import { useChildren } from "@/context/children-context"
 import { useVaultBalances } from "@/context/vault-balances-context"
 import { useMarinadeApy } from "@/hooks/use-marinade-apy"
+import { useSolPrice, solToUsdFormatted } from "@/hooks/use-sol-price"
 
 export function StatsOverview() {
   const { children } = useChildren()
   const { totalSol } = useVaultBalances()
+  const { usdPerSol, loading: priceLoading } = useSolPrice()
   const marinadeApy = useMarinadeApy()
 
   const contextTotal = children.reduce((sum, c) => sum + c.totalSaved, 0)
@@ -17,16 +19,32 @@ export function StatsOverview() {
     0
   )
   const lockedSol = totalSol > 0 ? totalSol : contextTotal
+  const usdLine =
+    lockedSol > 0 && usdPerSol != null
+      ? solToUsdFormatted(lockedSol, usdPerSol)
+      : null
   const totalFormatted =
-    lockedSol > 0 ? `${lockedSol.toFixed(3)} SOL` : "—"
+    lockedSol > 0
+      ? usdLine && !priceLoading
+        ? usdLine
+        : `${lockedSol.toFixed(3)} SOL`
+      : "—"
+  const totalSub =
+    lockedSol > 0 && usdLine
+      ? `${lockedSol.toFixed(3)} SOL · live price`
+      : lockedSol > 0 && usdPerSol == null
+        ? `${lockedSol.toFixed(3)} SOL`
+        : children.length === 0
+          ? "Add children & lock SOL"
+          : `${children.length} child${children.length === 1 ? "" : "ren"}`
   const growthLabel = marinadeApy != null ? `${marinadeApy}%` : "—"
   const growthSub = marinadeApy != null ? "Marinade mSOL APY (30d)" : "Connect & lock as mSOL for APY"
 
   const stats = [
     {
-      label: "Total Locked",
+      label: "Profile value (locked)",
       value: totalFormatted,
-      change: children.length === 0 ? "Add children & lock SOL" : `${children.length} child${children.length === 1 ? "" : "ren"}`,
+      change: totalSub,
       icon: Lock,
       trend: "neutral" as const,
     },
@@ -40,7 +58,8 @@ export function StatsOverview() {
     {
       label: "Children",
       value: String(children.length),
-      change: children.length === 0 ? "Add your first child" : "All growing",
+      change:
+        children.length === 0 ? "Add your first child" : "Saved in your Nest",
       icon: Users,
       trend: "neutral" as const,
     },

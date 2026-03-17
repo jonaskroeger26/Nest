@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { useActions } from "@/context/actions-context"
 import { Plus, Lock, Unlock } from "lucide-react"
+import { useSolPrice, solToUsdFormatted } from "@/hooks/use-sol-price"
 
 interface Goal {
   name: string
@@ -25,6 +26,11 @@ interface ChildCardProps {
 
 export function ChildCard({ name, age, avatar, totalSaved, goals }: ChildCardProps) {
   const { openAddGoal } = useActions()
+  const { usdPerSol } = useSolPrice()
+  const usd =
+    totalSaved > 0 && usdPerSol != null
+      ? solToUsdFormatted(totalSaved, usdPerSol)
+      : null
   return (
     <Card className="overflow-hidden">
       <CardHeader className="pb-4">
@@ -41,9 +47,15 @@ export function ChildCard({ name, age, avatar, totalSaved, goals }: ChildCardPro
           </div>
           <div className="text-right">
             <p className="text-2xl font-bold text-foreground">
-              {totalSaved > 0 ? `${totalSaved.toFixed(3)} SOL` : "—"}
+              {usd ?? (totalSaved > 0 ? `${totalSaved.toFixed(3)} SOL` : "—")}
             </p>
-            <p className="text-sm text-muted-foreground">Locked (on-chain)</p>
+            <p className="text-sm text-muted-foreground">
+              {usd
+                ? `${totalSaved.toFixed(3)} SOL locked`
+                : totalSaved > 0
+                  ? "On-chain"
+                  : "No vault yet"}
+            </p>
           </div>
         </div>
       </CardHeader>
