@@ -13,9 +13,16 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
-import { useChildren } from "@/context/children-context"
 import { useProfileReady } from "@/context/profile-ready-context"
+import { useProfileReload } from "@/context/profile-reload-context"
 import { useWallet } from "@/hooks/use-wallet"
+import { PublicKey } from "@solana/web3.js"
+import {
+  getConnection,
+  registerChildOnChain,
+} from "@/lib/solana-vault"
+import { signTransactionWithBrowserWallet } from "@/lib/wallet-sign"
+import { solanaTxUrl } from "@/lib/solana-explorer"
 
 export function NewChildDialog({
   open,
@@ -24,41 +31,79 @@ export function NewChildDialog({
   open: boolean
   onClose: () => void
 }) {
-  const { addChild } = useChildren()
   const profileReady = useProfileReady()
+  const { reloadProfileFromChain } = useProfileReload()
   const { address } = useWallet()
   const [name, setName] = useState("")
-  const [age, setAge] = useState("")
+  const [childWallet, setChildWallet] = useState("")
+  const [loading, setLoading] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    const ageNum = parseInt(age, 10)
-    if (!name.trim()) return
-    if (address && !profileReady) {
+    const childName = name.trim().slice(0, 32)
+    if (!childName) return
+    if (!address) {
+      toast.error("Connect your wallet first.")
+      return
+    }
+    if (!profileReady) {
       toast.error("Still loading your profile — try again in a moment.")
       return
     }
-    const childName = name.trim().slice(0, 32)
-    addChild({
-      name: childName,
-      age: Number.isFinite(ageNum) && ageNum >= 0 ? ageNum : 0,
-      avatar: `https://api.dicebear.com/7.x/lorelei/svg?seed=${encodeURIComponent(name.trim())}`,
-    })
-    toast.success(
-      `${childName} added. Set their wallet on the profile so locked SOL shows on their card.`
-    )
-    onClose()
-    setName("")
-    setAge("")
+    let beneficiary: PublicKey
+    try {
+      beneficiary = new PublicKey(childWallet.trim())
+    } catch {
+      toast.error("Enter a valid Solana address for the child’s wallet.")
+      return
+    }
+    setLoading(true)
+    try {
+      const connection = await getConnection()
+      const sig = await registerChildOnChain(
+        connection,
+        new PublicKey(address),
+        beneficiary,
+        childName,
+        signTransactionWithBrowserWallet
+      )
+      reloadProfileFromChain()
+      toast.success(
+        <span>
+          Child registered on-chain.{" "}
+          <a
+            href={solanaTxUrl(sig)}
+            className="font-medium underline"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            View transaction
+          </a>
+        </span>
+      )
+      onClose()
+      setName("")
+      setChildWallet("")
+    } catch (err) {
+      toast.error((err as Error).message?.slice(0, 120) ?? "Transaction failed")
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>New child</DialogTitle>
-          <DialogDescription>
-            Add a child profile. You can add goals and lock SOL for them later.
+          <DialogTitle>Register child on-chain</DialogTitle>
+          <DialogDescription className="space-y-2">
+            <span className="block">
+              Signs a transaction as the parent wallet. The child’s wallet address is stored on-chain
+              and is the only address that can withdraw locked funds after unlock.
+            </span>
+            <span className="block text-muted-foreground text-xs">
+              One registration per parent + child wallet. Locks use separate transactions.
+            </span>
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -71,21 +116,22 @@ export function NewChildDialog({
             />
           </div>
           <div className="space-y-2">
-            <Label>Age</Label>
+            <Label>Child&apos;s Solana wallet *</Label>
             <Input
-              type="number"
-              min={0}
-              placeholder="0"
-              value={age}
-              onChange={(e) => setAge(e.target.value)}
+              placeholder="Address that will withdraw after unlock"
+              value={childWallet}
+              onChange={(e) => setChildWallet(e.target.value)}
             />
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" disabled={!name.trim()}>
-              Add child
+            <Button
+              type="submit"
+              disabled={!name.trim() || !childWallet.trim() || loading}
+            >
+              {loading ? "Signing…" : "Sign & register on-chain"}
             </Button>
           </DialogFooter>
         </form>

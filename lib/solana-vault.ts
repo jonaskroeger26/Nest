@@ -16,6 +16,8 @@ const TOKEN_VAULT_SEED = "token_vault"
 // Token vault: 8 (disc) + 32 (creator) + 32 (beneficiary) + 32 (mint) + 8 (unlock_ts) + 1 (bump) = 113
 const VAULT_DATA_SIZE = 81
 const TOKEN_VAULT_DATA_SIZE = 113
+const PARENT_PROFILE_DATA_SIZE = 73
+const REGISTERED_CHILD_DATA_SIZE = 114
 
 const TOKEN_PROGRAM_ID = new PublicKey(
   "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
@@ -104,6 +106,185 @@ export function deriveATA(owner: PublicKey, mint: PublicKey): PublicKey {
     ASSOCIATED_TOKEN_PROGRAM_ID
   )
   return ata
+}
+
+export function encodeDisplayName32(name: string): Buffer {
+  const buf = Buffer.alloc(32)
+  const enc = Buffer.from(name.trim().slice(0, 32), "utf8")
+  enc.copy(buf, 0, 0, Math.min(32, enc.length))
+  return buf
+}
+
+export function decodeDisplayName32(data: Buffer | Uint8Array): string {
+  const b = Buffer.from(data)
+  const z = b.indexOf(0)
+  return (z === -1 ? b : b.subarray(0, z)).toString("utf8").trim()
+}
+
+export function deriveParentProfilePda(parent: PublicKey): PublicKey {
+  const [pda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("parent_profile", "utf8"), parent.toBuffer()],
+    getKidsVaultProgramId()
+  )
+  return pda
+}
+
+export function deriveRegisteredChildPda(
+  parent: PublicKey,
+  beneficiary: PublicKey
+): PublicKey {
+  const [pda] = PublicKey.findProgramAddressSync(
+    [
+      Buffer.from("registered_child", "utf8"),
+      parent.toBuffer(),
+      beneficiary.toBuffer(),
+    ],
+    getKidsVaultProgramId()
+  )
+  return pda
+}
+
+export interface RegisteredChildOnChain {
+  beneficiary: string
+  name: string
+  registeredAt: number
+  pda: string
+}
+
+export async function fetchParentDisplayNameFromChain(
+  connection: Connection,
+  parent: PublicKey
+): Promise<string | null> {
+  const pda = deriveParentProfilePda(parent)
+  const acc = await connection.getAccountInfo(pda, "confirmed")
+  if (!acc?.data || acc.data.length < PARENT_PROFILE_DATA_SIZE) return null
+  const s = decodeDisplayName32(acc.data.subarray(8 + 32, 8 + 32 + 32))
+  return s || null
+}
+
+export async function fetchRegisteredChildrenFromChain(
+  connection: Connection,
+  parent: PublicKey
+): Promise<RegisteredChildOnChain[]> {
+  const programId = getKidsVaultProgramId()
+  let accounts: Awaited<
+    ReturnType<Connection["getProgramAccounts"]>
+  > = []
+  try {
+    accounts = await connection.getProgramAccounts(programId, {
+      filters: [
+        { dataSize: REGISTERED_CHILD_DATA_SIZE },
+        { memcmp: { offset: 8, bytes: parent.toBase58() } },
+      ],
+    })
+  } catch {
+    return []
+  }
+  const out: RegisteredChildOnChain[] = []
+  for (const { pubkey, account } of accounts) {
+    const d = account.data
+    if (d.length < REGISTERED_CHILD_DATA_SIZE) continue
+    const beneficiary = new PublicKey(d.subarray(40, 72)).toBase58()
+    const name = decodeDisplayName32(d.subarray(72, 104)) || "Child"
+    const dv = new DataView(d.buffer, d.byteOffset, d.length)
+    const registeredAt = Number(dv.getBigInt64(104, true))
+    out.push({
+      beneficiary,
+      name,
+      registeredAt,
+      pda: pubkey.toBase58(),
+    })
+  }
+  out.sort((a, b) => a.registeredAt - b.registeredAt)
+  return out
+}
+
+export async function setParentDisplayNameOnChain(
+  connection: Connection,
+  parent: PublicKey,
+  displayName: string,
+  signTransaction: (tx: Transaction) => Promise<Transaction>
+): Promise<string> {
+  const disc = await instructionDiscriminator("set_parent_display_name")
+  const data = Buffer.alloc(8 + 32)
+  for (let i = 0; i < 8; i++) data[i] = disc[i]
+  encodeDisplayName32(displayName).copy(data, 8)
+  const parentProfile = deriveParentProfilePda(parent)
+  const ix = new TransactionInstruction({
+    programId: getKidsVaultProgramId(),
+    keys: [
+      { pubkey: parentProfile, isSigner: false, isWritable: true },
+      { pubkey: parent, isSigner: true, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data,
+  })
+  const tx = new Transaction().add(ix)
+  const { blockhash, lastValidBlockHeight } =
+    await connection.getLatestBlockhash("confirmed")
+  tx.recentBlockhash = blockhash
+  tx.feePayer = parent
+  const signed = await signTransaction(tx)
+  const sig = await connection.sendRawTransaction(signed.serialize(), {
+    skipPreflight: false,
+  })
+  await connection.confirmTransaction(
+    { signature: sig, blockhash, lastValidBlockHeight },
+    "confirmed"
+  )
+  return sig
+}
+
+export async function registerChildOnChain(
+  connection: Connection,
+  parent: PublicKey,
+  beneficiary: PublicKey,
+  childName: string,
+  signTransaction: (tx: Transaction) => Promise<Transaction>
+): Promise<string> {
+  const disc = await instructionDiscriminator("register_child")
+  const data = Buffer.alloc(8 + 32)
+  for (let i = 0; i < 8; i++) data[i] = disc[i]
+  encodeDisplayName32(childName).copy(data, 8)
+  const registeredChild = deriveRegisteredChildPda(parent, beneficiary)
+  const ix = new TransactionInstruction({
+    programId: getKidsVaultProgramId(),
+    keys: [
+      { pubkey: registeredChild, isSigner: false, isWritable: true },
+      { pubkey: parent, isSigner: true, isWritable: true },
+      { pubkey: beneficiary, isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data,
+  })
+  const tx = new Transaction().add(
+    ComputeBudgetProgram.setComputeUnitLimit({ units: 200_000 }),
+    ix
+  )
+  try {
+    const { blockhash, lastValidBlockHeight } =
+      await connection.getLatestBlockhash("confirmed")
+    tx.recentBlockhash = blockhash
+    tx.feePayer = parent
+    const signed = await signTransaction(tx)
+    const sig = await connection.sendRawTransaction(signed.serialize(), {
+      skipPreflight: false,
+    })
+    await connection.confirmTransaction(
+      { signature: sig, blockhash, lastValidBlockHeight },
+      "confirmed"
+    )
+    return sig
+  } catch (e) {
+    logTxError("registerChildOnChain", e)
+    const userMsg = toUserMessage(e)
+    const msg = (e as Error)?.message ?? ""
+    if (/already in use|0x0/i.test(msg))
+      throw new Error(
+        "This child wallet is already registered on-chain for your account."
+      )
+    throw userMsg ? new Error(userMsg) : e
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -584,7 +765,7 @@ export async function createMsolVault(
   amountSol: number,
   unlockTimestamp: number,
   signTransaction: (tx: Transaction) => Promise<Transaction>
-): Promise<string> {
+): Promise<{ depositSig: string; lockSig: string }> {
   try {
     // Step 1: Build Marinade deposit tx server-side (avoids Anchor/Node issues on client)
     const res = await fetch("/api/build-marinade-deposit-tx", {
@@ -627,7 +808,7 @@ export async function createMsolVault(
       throw new Error("No mSOL received from Marinade deposit")
 
     // Step 4: Lock mSOL in token vault
-    return createTokenVault(
+    const lockSig = await createTokenVault(
       connection,
       creator,
       beneficiary,
@@ -636,6 +817,7 @@ export async function createMsolVault(
       unlockTimestamp,
       signTransaction
     )
+    return { depositSig: sig1, lockSig }
   } catch (e) {
     logTxError("createMsolVault", e)
     const userMsg = toUserMessage(e)

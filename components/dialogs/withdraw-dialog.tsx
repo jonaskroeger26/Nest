@@ -129,8 +129,9 @@ export function WithdrawDialog({
         <DialogHeader>
           <DialogTitle>Withdraw unlocked funds</DialogTitle>
           <DialogDescription>
-            Vaults where you are the beneficiary and the unlock date has passed.
-            SOL goes to your wallet; mSOL goes to your mSOL token account.
+            Connect the <strong>child&apos;s wallet</strong> (the beneficiary). The program only
+            allows that address to sign withdrawals after unlock — not the parent.
+            SOL goes to the child wallet; mSOL to their mSOL token account.
           </DialogDescription>
         </DialogHeader>
         {!address ? (

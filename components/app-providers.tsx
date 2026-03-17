@@ -1,12 +1,14 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
+import { PublicKey } from "@solana/web3.js"
 import { Toaster } from "sonner"
 import { useRouter, usePathname } from "next/navigation"
 import { UserProvider, useUser } from "@/context/user-context"
 import { ChildrenProvider, useChildren } from "@/context/children-context"
 import { VaultBalancesProvider } from "@/context/vault-balances-context"
 import { ProfileReadyContext } from "@/context/profile-ready-context"
+import { ProfileReloadProvider, useProfileReload } from "@/context/profile-reload-context"
 import { ActionsProvider, useActions } from "@/context/actions-context"
 import { WalletProvider, useWallet } from "@/hooks/use-wallet"
 import { AddSolDialog } from "@/components/dialogs/add-sol-dialog"
@@ -15,6 +17,11 @@ import { WithdrawDialog } from "@/components/dialogs/withdraw-dialog"
 import { AutoSaveDialog } from "@/components/dialogs/auto-save-dialog"
 import { GiftDialog } from "@/components/dialogs/gift-dialog"
 import { AddGoalDialog } from "@/components/dialogs/add-goal-dialog"
+import {
+  getConnection,
+  fetchParentDisplayNameFromChain,
+  fetchRegisteredChildrenFromChain,
+} from "@/lib/solana-vault"
 
 function RedirectOnConnect() {
   const { connected } = useWallet()
@@ -31,47 +38,76 @@ function RedirectOnConnect() {
 }
 
 /**
- * Load profile from Supabase first, then enable autosave.
- * Avoids wiping children: autosave used to run with [] before hydration finished.
+ * Parent name + children: load from on-chain (kids-vault program) when available;
+ * fall back to Supabase for legacy profiles. Each lock / register_child is its own tx.
  */
 function ProfileGate({ children }: { children: React.ReactNode }) {
   const { address } = useWallet()
   const { setUserName, userName } = useUser()
   const { setChildren, children: savedChildren } = useChildren()
+  const { reloadNonce } = useProfileReload()
   const [hydrated, setHydrated] = useState(false)
   const [profileReady, setProfileReady] = useState(false)
+  const prevAddressRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (!address) {
+      prevAddressRef.current = null
       setHydrated(false)
       setProfileReady(false)
       return
     }
-    setHydrated(false)
-    setProfileReady(false)
-    setChildren([])
+
+    const addressChanged = prevAddressRef.current !== address
+    prevAddressRef.current = address
+    const isInitialOrWalletSwitch = addressChanged || reloadNonce === 0
+
+    if (addressChanged) {
+      setChildren([])
+      setHydrated(false)
+      setProfileReady(false)
+    }
+
     let cancelled = false
 
     ;(async () => {
       try {
+        const connection = await getConnection()
+        const parentPk = new PublicKey(address)
+        const [onChainName, chainChildren] = await Promise.all([
+          fetchParentDisplayNameFromChain(connection, parentPk).catch(() => null),
+          fetchRegisteredChildrenFromChain(connection, parentPk),
+        ])
+        if (cancelled) return
+
         const res = await fetch(
           `/api/profile?wallet=${encodeURIComponent(address)}`
         )
+        const api = res.ok
+          ? ((await res.json()) as {
+              name: string | null
+              children: { child_wallet: string | null; child_name: string }[]
+            })
+          : { name: null, children: [] as { child_wallet: string | null; child_name: string }[] }
         if (cancelled) return
-        if (!res.ok) {
-          setHydrated(true)
-          setProfileReady(true)
-          return
-        }
-        const data = (await res.json()) as {
-          name: string | null
-          children: { child_wallet: string | null; child_name: string }[]
-        }
-        if (cancelled) return
-        if (data.name) setUserName(data.name)
-        if (Array.isArray(data.children)) {
+
+        const name = onChainName ?? api.name ?? null
+        if (name) setUserName(name)
+
+        if (chainChildren.length > 0) {
           setChildren(
-            data.children.map((c) => ({
+            chainChildren.map((c) => ({
+              name: c.name,
+              age: 0,
+              avatar: `https://api.dicebear.com/7.x/lorelei/svg?seed=${encodeURIComponent(c.name)}`,
+              totalSaved: 0,
+              goals: [],
+              beneficiaryAddress: c.beneficiary,
+            }))
+          )
+        } else if (isInitialOrWalletSwitch && Array.isArray(api.children)) {
+          setChildren(
+            api.children.map((c) => ({
               name: c.child_name,
               age: 0,
               avatar: `https://api.dicebear.com/7.x/lorelei/svg?seed=${encodeURIComponent(
@@ -96,7 +132,7 @@ function ProfileGate({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true
     }
-  }, [address, setChildren, setUserName])
+  }, [address, reloadNonce, setChildren, setUserName])
 
   useEffect(() => {
     if (!address || !hydrated) return
@@ -150,14 +186,16 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
       <VaultBalancesProvider>
         <UserProvider>
           <ChildrenProvider>
-            <ProfileGate>
-              <ActionsProvider>
-                <RedirectOnConnect />
-                {children}
-                <DialogRenderer />
-                <Toaster position="bottom-center" richColors />
-              </ActionsProvider>
-            </ProfileGate>
+            <ProfileReloadProvider>
+              <ProfileGate>
+                <ActionsProvider>
+                  <RedirectOnConnect />
+                  {children}
+                  <DialogRenderer />
+                  <Toaster position="bottom-center" richColors />
+                </ActionsProvider>
+              </ProfileGate>
+            </ProfileReloadProvider>
           </ChildrenProvider>
         </UserProvider>
       </VaultBalancesProvider>

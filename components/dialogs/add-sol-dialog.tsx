@@ -16,6 +16,8 @@ import { useWallet } from "@/hooks/use-wallet"
 import { useChildren } from "@/context/children-context"
 import { useMarinadeApy } from "@/hooks/use-marinade-apy"
 import { getConnection, createSolVault, createMsolVault } from "@/lib/solana-vault"
+import { signTransactionWithBrowserWallet } from "@/lib/wallet-sign"
+import { solanaTxUrl } from "@/lib/solana-explorer"
 import { isMainnetVaults } from "@/lib/solana-config"
 import { useVaultBalances } from "@/context/vault-balances-context"
 import { PublicKey } from "@solana/web3.js"
@@ -68,32 +70,59 @@ export function AddSolDialog({
     try {
       const connection = await getConnection()
       const creatorPubkey = new PublicKey(address)
-      const signTransaction = async (tx: import("@solana/web3.js").Transaction) => {
-        const provider = (typeof window !== "undefined" && window.solana) ?? (window as unknown as { phantom?: { solana?: { signTransaction: (t: unknown) => Promise<unknown> } } }).phantom?.solana
-        if (!provider?.signTransaction) throw new Error("Wallet cannot sign")
-        const signed = await provider.signTransaction(tx)
-        return signed as import("@solana/web3.js").Transaction
-      }
       if (lockAsMsol) {
-        await createMsolVault(
+        const { depositSig, lockSig } = await createMsolVault(
           connection,
           creatorPubkey,
           beneficiaryPubkey,
           amountNum,
           unlockTs,
-          signTransaction
+          signTransactionWithBrowserWallet
         )
-        toast.success("mSOL vault created! SOL was staked via Marinade and locked until the unlock date.")
+        toast.success(
+          <span>
+            mSOL locked.{" "}
+            <a
+              href={solanaTxUrl(depositSig)}
+              className="underline"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Deposit tx
+            </a>
+            {" · "}
+            <a
+              href={solanaTxUrl(lockSig)}
+              className="underline"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Lock tx
+            </a>
+          </span>
+        )
       } else {
-        await createSolVault(
+        const sig = await createSolVault(
           connection,
           creatorPubkey,
           beneficiaryPubkey,
           amountNum,
           unlockTs,
-          signTransaction
+          signTransactionWithBrowserWallet
         )
-        toast.success("Vault created! SOL is locked until the unlock date.")
+        toast.success(
+          <span>
+            SOL locked in vault.{" "}
+            <a
+              href={solanaTxUrl(sig)}
+              className="underline"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              View transaction
+            </a>
+          </span>
+        )
       }
       if (childName.trim()) {
         updateChildTotal(childName.trim(), amountNum)

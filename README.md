@@ -2,6 +2,15 @@
 
 **Runs on testnet until you switch.** Default RPC is **testnet** (matches program `3be5xt…`). On Vercel, don’t set `mainnet-beta` until kids-vault is deployed on mainnet and you’re ready. Use **Phantom → Testnet** and faucet SOL.
 
+### On-chain identity & locks
+
+- **Parent name:** signed tx `set_parent_display_name` (welcome flow or Settings → “Save name on-chain”).
+- **Each child:** signed tx `register_child` — stores child display name + **child wallet** on-chain (one PDA per parent + child wallet).
+- **Each SOL lock:** `create_vault` (or top-up transfer) — toast links to Solscan.
+- **Withdraw:** only the **child’s wallet** can sign after unlock (enforced in the program).
+
+Redeploy **kids-vault** from this repo after pulling the latest `programs/kids-vault/src/lib.rs`; older deployments won’t have `register_child` / `set_parent_display_name`. Until you redeploy, Nest still loads legacy children from Supabase.
+
 ## Testnet (try vaults first)
 
 1. **Deploy kids-vault on testnet** (from workspace root — parent of `fatherhood/`).  

@@ -18,12 +18,21 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { PublicKey } from "@solana/web3.js"
+import { toast } from "sonner"
+import {
+  getConnection,
+  setParentDisplayNameOnChain,
+} from "@/lib/solana-vault"
+import { signTransactionWithBrowserWallet } from "@/lib/wallet-sign"
+import { solanaTxUrl } from "@/lib/solana-explorer"
 
 export function Header() {
   const { address, isConnecting, connect, disconnect, connected } = useWallet()
   const { userName, setUserName } = useUser()
   const [showConnectName, setShowConnectName] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [savingNameOnChain, setSavingNameOnChain] = useState(false)
   const prevAddress = useRef<string | null>(null)
 
   const shortAddress = address
@@ -39,9 +48,72 @@ export function Header() {
     connect()
   }
 
-  const handleNameContinue = (name: string) => {
+  const handleNameContinue = async (name: string) => {
     setUserName(name)
-    setShowConnectName(false)
+    if (address) {
+      try {
+        const conn = await getConnection()
+        const sig = await setParentDisplayNameOnChain(
+          conn,
+          new PublicKey(address),
+          name,
+          signTransactionWithBrowserWallet
+        )
+        toast.success(
+          <span>
+            Name saved on-chain.{" "}
+            <a
+              href={solanaTxUrl(sig)}
+              className="underline"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              View tx
+            </a>
+          </span>
+        )
+      } catch (e) {
+        toast.error(
+          (e as Error).message?.slice(0, 100) ?? "Could not save name on-chain"
+        )
+        throw e
+      }
+    }
+  }
+
+  const saveSettingsNameOnChain = async () => {
+    const n = userName?.trim()
+    if (!address || !n) {
+      toast.error("Enter a name and stay connected.")
+      return
+    }
+    setSavingNameOnChain(true)
+    try {
+      const conn = await getConnection()
+      const sig = await setParentDisplayNameOnChain(
+        conn,
+        new PublicKey(address),
+        n,
+        signTransactionWithBrowserWallet
+      )
+      toast.success(
+        <span>
+          <a
+            href={solanaTxUrl(sig)}
+            className="underline"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            View transaction
+          </a>
+        </span>
+      )
+      setShowSettings(false)
+    } catch (e) {
+      toast.error((e as Error).message?.slice(0, 100) ?? "Failed")
+    } finally {
+      setSavingNameOnChain(false)
+    }
   }
 
   return (
@@ -49,7 +121,7 @@ export function Header() {
       <ConnectNameDialog
         open={showConnectName}
         onClose={() => setShowConnectName(false)}
-        onContinue={(name) => Promise.resolve(handleNameContinue(name))}
+        onContinue={handleNameContinue}
       />
       <div className="flex items-center justify-between px-6 py-4">
         <div className="flex items-center gap-3">
@@ -113,7 +185,9 @@ export function Header() {
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Settings</DialogTitle>
-                <DialogDescription>Update your display name for the greeting.</DialogDescription>
+                <DialogDescription>
+                  Your greeting name is stored on-chain (signed by this wallet).
+                </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 pt-2">
                 <div className="space-y-2">
@@ -125,6 +199,13 @@ export function Header() {
                     placeholder="e.g. James"
                   />
                 </div>
+                <Button
+                  className="w-full"
+                  disabled={savingNameOnChain || !userName?.trim()}
+                  onClick={() => void saveSettingsNameOnChain()}
+                >
+                  {savingNameOnChain ? "Signing…" : "Save name on-chain"}
+                </Button>
               </div>
             </DialogContent>
           </Dialog>
