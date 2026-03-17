@@ -4,6 +4,7 @@ import {
   Transaction,
   SystemProgram,
   TransactionInstruction,
+  ComputeBudgetProgram,
 } from "@solana/web3.js"
 import { getKidsVaultProgramId } from "@/lib/solana-config"
 
@@ -126,6 +127,10 @@ function toUserMessage(e: unknown): string | null {
     return "Program version mismatch. Redeploy kids-vault (see README)."
   if (/may not be used for executing instructions/i.test(msg))
     return "Program not executable here. Deploy kids-vault to the cluster your app uses."
+  if (/insufficient funds|Transfer: insufficient lamports/i.test(msg))
+    return "Not enough SOL in your wallet (include rent + amount)."
+  if (/exceeded|compute unit|Consumed.*of.*compute/i.test(msg))
+    return "Network busy — try again in a moment."
   return null
 }
 
@@ -340,24 +345,58 @@ export async function createSolVault(
   signTransaction: (tx: Transaction) => Promise<Transaction>
 ): Promise<string> {
   const amountLamports = Math.floor(amountSol * 1e9)
+  if (amountLamports <= 0) {
+    throw new Error("Amount must be greater than zero.")
+  }
   const vaultPDA = deriveVaultPDA(creator, beneficiary)
-  const disc = await instructionDiscriminator("create_vault")
-  const data = new ArrayBuffer(8 + 8 + 8)
-  const view = new DataView(data)
-  for (let i = 0; i < 8; i++) view.setUint8(i, disc[i])
-  view.setBigUint64(8, BigInt(amountLamports), true)
-  view.setBigInt64(16, BigInt(unlockTimestamp), true)
-  const ix = new TransactionInstruction({
-    programId: getKidsVaultProgramId(),
-    keys: [
-      { pubkey: vaultPDA, isSigner: false, isWritable: true },
-      { pubkey: creator, isSigner: true, isWritable: true },
-      { pubkey: beneficiary, isSigner: false, isWritable: false },
-      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-    ],
-    data: Buffer.from(data),
-  })
-  const tx = new Transaction().add(ix)
+  const programId = getKidsVaultProgramId()
+  const existing = await connection.getAccountInfo(vaultPDA)
+
+  let tx: Transaction
+  if (
+    existing &&
+    existing.owner.equals(programId) &&
+    existing.data.length >= VAULT_DATA_SIZE
+  ) {
+    const storedCreator = new PublicKey(existing.data.slice(8, 40))
+    const storedBen = new PublicKey(existing.data.slice(40, 72))
+    if (!storedCreator.equals(creator) || !storedBen.equals(beneficiary)) {
+      throw new Error("Vault address conflict. Use a different child wallet.")
+    }
+    tx = new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey: creator,
+        toPubkey: vaultPDA,
+        lamports: amountLamports,
+      })
+    )
+  } else if (existing) {
+    throw new Error(
+      "That vault address is already in use. Try a different child wallet."
+    )
+  } else {
+    const disc = await instructionDiscriminator("create_vault")
+    const data = new ArrayBuffer(8 + 8 + 8)
+    const view = new DataView(data)
+    for (let i = 0; i < 8; i++) view.setUint8(i, disc[i])
+    view.setBigUint64(8, BigInt(amountLamports), true)
+    view.setBigInt64(16, BigInt(unlockTimestamp), true)
+    const ix = new TransactionInstruction({
+      programId: programId,
+      keys: [
+        { pubkey: vaultPDA, isSigner: false, isWritable: true },
+        { pubkey: creator, isSigner: true, isWritable: true },
+        { pubkey: beneficiary, isSigner: false, isWritable: false },
+        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      ],
+      data: Buffer.from(data),
+    })
+    tx = new Transaction()
+      .add(
+        ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 })
+      )
+      .add(ix)
+  }
   try {
     const { blockhash, lastValidBlockHeight } =
       await connection.getLatestBlockhash("confirmed")
