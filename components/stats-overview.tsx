@@ -12,6 +12,10 @@ export function StatsOverview() {
   const marinadeApy = useMarinadeApy()
 
   const contextTotal = children.reduce((sum, c) => sum + c.totalSaved, 0)
+  const activeGoals = children.reduce(
+    (sum, c) => sum + c.goals.filter((g) => g.locked).length,
+    0
+  )
   const lockedSol = totalSol > 0 ? totalSol : contextTotal
   const totalFormatted =
     lockedSol > 0 ? `${lockedSol.toFixed(3)} SOL` : "—"
