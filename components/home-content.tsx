@@ -87,6 +87,7 @@ export function HomeContent() {
   const { connected } = useWallet()
   const profileReady = useProfileReady()
   const { byBeneficiarySol } = useVaultBalances()
+  const { usdPerSol } = useSolPrice()
   const greeting = getTimeGreeting()
   const greetingLine = userName ? `${greeting}, ${userName}` : greeting
 
@@ -107,6 +108,15 @@ export function HomeContent() {
   const orphanVaults = Object.entries(byBeneficiarySol).filter(
     ([b]) => !usedBeneficiaries.has(b)
   )
+
+  const totalSolLocked = Object.values(byBeneficiarySol).reduce(
+    (sum, v) => sum + v,
+    0
+  )
+  const profileUsd =
+    usdPerSol != null && totalSolLocked > 0
+      ? solToUsdFormatted(totalSolLocked, usdPerSol)
+      : undefined
 
   return (
     <div className="min-h-screen bg-background">
