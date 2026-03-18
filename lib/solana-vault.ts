@@ -199,15 +199,51 @@ export async function fetchRegisteredChildrenFromChain(
   return out
 }
 
+/** Anchor IDL discriminators (avoids WebCrypto / SES issues in some wallets). */
+const DISC_SET_PARENT_DISPLAY_NAME = Buffer.from([
+  64, 98, 135, 209, 180, 33, 40, 99,
+])
+const DISC_REGISTER_CHILD = Buffer.from([147, 197, 225, 49, 210, 4, 21, 223])
+
+async function txErrorDetail(
+  connection: Connection,
+  e: unknown
+): Promise<string> {
+  const base = (e as Error)?.message ?? String(e)
+  try {
+    const err = e as { getLogs?: (c: Connection) => Promise<string[] | null> }
+    if (typeof err.getLogs === "function") {
+      const logs = await err.getLogs(connection)
+      if (logs?.length) return `${base}\n${logs.slice(-12).join("\n")}`
+    }
+  } catch {
+    /* ignore */
+  }
+  const logs = (e as { logs?: string[] }).logs
+  if (logs?.length) return `${base}\n${logs.slice(-12).join("\n")}`
+  return base
+}
+
+function hintFromProgramLogs(logText: string): string | null {
+  if (/already in use|Account.*already exists|0x0\b/i.test(logText))
+    return "This child wallet is already registered for your account — refresh the page."
+  if (/insufficient lamports|Insufficient funds/i.test(logText))
+    return "Need a little more SOL in your wallet for account rent (~0.002 SOL on testnet)."
+  if (/InstructionFallbackNotFound|custom program error: 0x65|0x65\b/i.test(logText))
+    return "Program on this network is outdated. Use testnet + latest kids-vault deploy."
+  if (/Program .* failed: custom program error/i.test(logText))
+    return "On-chain program rejected the transaction — check Phantom is on the same network as Nest (testnet)."
+  return null
+}
+
 export async function setParentDisplayNameOnChain(
   connection: Connection,
   parent: PublicKey,
   displayName: string,
   signTransaction: (tx: Transaction) => Promise<Transaction>
 ): Promise<string> {
-  const disc = await instructionDiscriminator("set_parent_display_name")
   const data = Buffer.alloc(8 + 32)
-  for (let i = 0; i < 8; i++) data[i] = disc[i]
+  DISC_SET_PARENT_DISPLAY_NAME.copy(data, 0)
   encodeDisplayName32(displayName).copy(data, 8)
   const parentProfile = deriveParentProfilePda(parent)
   const ix = new TransactionInstruction({
@@ -228,10 +264,17 @@ export async function setParentDisplayNameOnChain(
   const sig = await connection.sendRawTransaction(signed.serialize(), {
     skipPreflight: false,
   })
-  await connection.confirmTransaction(
-    { signature: sig, blockhash, lastValidBlockHeight },
-    "confirmed"
-  )
+  try {
+    await connection.confirmTransaction(
+      { signature: sig, blockhash, lastValidBlockHeight },
+      "confirmed"
+    )
+  } catch (e) {
+    const detail = await txErrorDetail(connection, e)
+    logTxError("setParentDisplayNameOnChain", e)
+    const hint = hintFromProgramLogs(detail)
+    throw new Error(hint ?? toUserMessage(e) ?? detail.slice(0, 220))
+  }
   return sig
 }
 
@@ -242,13 +285,24 @@ export async function registerChildOnChain(
   childName: string,
   signTransaction: (tx: Transaction) => Promise<Transaction>
 ): Promise<string> {
-  const disc = await instructionDiscriminator("register_child")
-  const data = Buffer.alloc(8 + 32)
-  for (let i = 0; i < 8; i++) data[i] = disc[i]
-  encodeDisplayName32(childName).copy(data, 8)
+  const programId = getKidsVaultProgramId()
   const registeredChild = deriveRegisteredChildPda(parent, beneficiary)
+  const existing = await connection.getAccountInfo(registeredChild, "confirmed")
+  if (
+    existing &&
+    existing.owner.equals(programId) &&
+    existing.data.length >= REGISTERED_CHILD_DATA_SIZE
+  ) {
+    throw new Error(
+      "This child wallet is already registered — refresh the page to see them."
+    )
+  }
+
+  const data = Buffer.alloc(8 + 32)
+  DISC_REGISTER_CHILD.copy(data, 0)
+  encodeDisplayName32(childName).copy(data, 8)
   const ix = new TransactionInstruction({
-    programId: getKidsVaultProgramId(),
+    programId,
     keys: [
       { pubkey: registeredChild, isSigner: false, isWritable: true },
       { pubkey: parent, isSigner: true, isWritable: true },
@@ -257,10 +311,7 @@ export async function registerChildOnChain(
     ],
     data,
   })
-  const tx = new Transaction().add(
-    ComputeBudgetProgram.setComputeUnitLimit({ units: 200_000 }),
-    ix
-  )
+  const tx = new Transaction().add(ix)
   try {
     const { blockhash, lastValidBlockHeight } =
       await connection.getLatestBlockhash("confirmed")
@@ -270,20 +321,32 @@ export async function registerChildOnChain(
     const sig = await connection.sendRawTransaction(signed.serialize(), {
       skipPreflight: false,
     })
-    await connection.confirmTransaction(
-      { signature: sig, blockhash, lastValidBlockHeight },
-      "confirmed"
-    )
+    try {
+      await connection.confirmTransaction(
+        { signature: sig, blockhash, lastValidBlockHeight },
+        "confirmed"
+      )
+    } catch (confirmErr) {
+      const detail = await txErrorDetail(connection, confirmErr)
+      logTxError("registerChildOnChain confirm", confirmErr, { signature: sig })
+      throw new Error(
+        hintFromProgramLogs(detail) ??
+          `Transaction sent (${sig.slice(0, 8)}…) but confirmation timed out. Check Solscan.`
+      )
+    }
     return sig
   } catch (e) {
-    logTxError("registerChildOnChain", e)
+    const detail = await txErrorDetail(connection, e)
+    logTxError("registerChildOnChain", e, { detail: detail.slice(0, 500) })
+    const hint = hintFromProgramLogs(detail)
+    if (hint) throw new Error(hint)
     const userMsg = toUserMessage(e)
-    const msg = (e as Error)?.message ?? ""
-    if (/already in use|0x0/i.test(msg))
+    if (userMsg) throw new Error(userMsg)
+    if (/already in use|0x0|Account.*exists/i.test(detail))
       throw new Error(
-        "This child wallet is already registered on-chain for your account."
+        "This child wallet is already registered — refresh the page."
       )
-    throw userMsg ? new Error(userMsg) : e
+    throw new Error(detail.slice(0, 280))
   }
 }
 
