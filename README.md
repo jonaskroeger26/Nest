@@ -109,3 +109,16 @@ Deploy: `anchor deploy -p kids_vault --provider.cluster mainnet` with the **same
 ## Devnet
 
 Same as testnet but set `NEXT_PUBLIC_SOLANA_CLUSTER=devnet`, use `anchor deploy --provider.cluster devnet`, and Phantom on Devnet. Faucet: `solana airdrop 2` on devnet.
+
+## NestDev (admin monitoring)
+
+Defaults (dev): **username** `admin`, **password** `admin123`.
+
+For deployments, override in `fatherhood/.env.local` (server-only env vars):
+
+```bash
+NEST_ADMIN_USER="admin"
+NEST_ADMIN_PASS="admin123"
+```
+
+Then open `http://localhost:3000/admin/nestdev`, login, then **Refresh**.
