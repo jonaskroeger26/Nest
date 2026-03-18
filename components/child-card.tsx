@@ -7,6 +7,7 @@ import { Progress } from "@/components/ui/progress"
 import { useActions } from "@/context/actions-context"
 import { Plus, Lock, Unlock } from "lucide-react"
 import { useSolPrice, solToUsdFormatted } from "@/hooks/use-sol-price"
+import { ChildVaultActivity } from "@/components/child-vault-activity"
 
 interface Goal {
   name: string
@@ -22,10 +23,18 @@ interface ChildCardProps {
   avatar: string
   totalSaved: number
   goals: Goal[]
+  beneficiaryAddress?: string
 }
 
-export function ChildCard({ name, age, avatar, totalSaved, goals }: ChildCardProps) {
-  const { openAddGoal } = useActions()
+export function ChildCard({
+  name,
+  age,
+  avatar,
+  totalSaved,
+  goals,
+  beneficiaryAddress,
+}: ChildCardProps) {
+  const { openAddGoal, openAddSolForChild } = useActions()
   const { usdPerSol } = useSolPrice()
   const usd =
     totalSaved > 0 && usdPerSol != null
@@ -60,6 +69,25 @@ export function ChildCard({ name, age, avatar, totalSaved, goals }: ChildCardPro
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {beneficiaryAddress ? (
+          <ChildVaultActivity beneficiaryAddress={beneficiaryAddress} />
+        ) : null}
+        <Button
+          variant="secondary"
+          className="w-full gap-2"
+          onClick={() =>
+            beneficiaryAddress && openAddSolForChild(beneficiaryAddress)
+          }
+          disabled={!beneficiaryAddress}
+          title={
+            beneficiaryAddress
+              ? undefined
+              : "Register this child on-chain with a wallet first"
+          }
+        >
+          <Lock className="h-4 w-4" />
+          Lock SOL for {name}
+        </Button>
         {goals.map((goal, index) => (
           <div key={index} className="rounded-xl bg-muted/50 p-4">
             <div className="mb-3 flex items-center justify-between">
@@ -83,8 +111,8 @@ export function ChildCard({ name, age, avatar, totalSaved, goals }: ChildCardPro
                 {Math.round((goal.current / goal.target) * 100)}%
               </span>
             </div>
-            <Progress 
-              value={(goal.current / goal.target) * 100} 
+            <Progress
+              value={(goal.current / goal.target) * 100}
               className="h-2"
             />
           </div>

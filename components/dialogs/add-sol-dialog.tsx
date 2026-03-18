@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import {
   Dialog,
   DialogContent,
@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useWallet } from "@/hooks/use-wallet"
 import { useChildren } from "@/context/children-context"
+import { useActions } from "@/context/actions-context"
 import { useMarinadeApy } from "@/hooks/use-marinade-apy"
 import { getConnection, createSolVault, createMsolVault } from "@/lib/solana-vault"
 import { signTransactionWithBrowserWallet } from "@/lib/wallet-sign"
@@ -32,15 +33,46 @@ export function AddSolDialog({
 }) {
   const { address, connect } = useWallet()
   const { children, updateChildTotal } = useChildren()
+  const { lockForChildBeneficiary } = useActions()
   const { refresh: refreshVaults } = useVaultBalances()
   const marinadeApy = useMarinadeApy()
-  const [childName, setChildName] = useState("")
-  const [beneficiary, setBeneficiary] = useState("")
+  const [selectedIdx, setSelectedIdx] = useState<number | "">("")
   const [amount, setAmount] = useState("")
   const [unlockDate, setUnlockDate] = useState("")
   const [lockAsMsol, setLockAsMsol] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+
+  useEffect(() => {
+    if (!open) return
+    setError("")
+    setAmount("")
+    setUnlockDate("")
+    if (lockForChildBeneficiary) {
+      const idx = children.findIndex(
+        (x) =>
+          (x.beneficiaryAddress?.trim() ?? "") === lockForChildBeneficiary
+      )
+      setSelectedIdx(idx >= 0 ? idx : "")
+    } else {
+      setSelectedIdx("")
+    }
+  }, [open, lockForChildBeneficiary, children])
+
+  useEffect(() => {
+    if (!open || !lockForChildBeneficiary || children.length === 0) return
+    const idx = children.findIndex(
+      (x) => (x.beneficiaryAddress?.trim() ?? "") === lockForChildBeneficiary
+    )
+    if (idx >= 0) setSelectedIdx(idx)
+  }, [open, lockForChildBeneficiary, children])
+
+  const selected =
+    typeof selectedIdx === "number" && selectedIdx >= 0
+      ? children[selectedIdx]
+      : null
+  const childName = selected?.name ?? ""
+  const beneficiary = selected?.beneficiaryAddress?.trim() ?? ""
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -49,10 +81,15 @@ export function AddSolDialog({
       connect()
       return
     }
+    if (!selected?.beneficiaryAddress?.trim()) {
+      setError("Select a child with a registered wallet — SOL binds to their vault.")
+      return
+    }
     const amountNum = parseFloat(amount)
     const unlockTs = unlockDate ? Math.floor(new Date(unlockDate).getTime() / 1000) : 0
-    if (!beneficiary.trim() || !amountNum || amountNum <= 0) {
-      setError("Enter child wallet address and a valid amount.")
+    const benStr = selected.beneficiaryAddress.trim()
+    if (!amountNum || amountNum <= 0) {
+      setError("Enter a valid amount.")
       return
     }
     if (unlockTs <= Math.floor(Date.now() / 1000)) {
@@ -61,7 +98,7 @@ export function AddSolDialog({
     }
     let beneficiaryPubkey: PublicKey
     try {
-      beneficiaryPubkey = new PublicKey(beneficiary.trim())
+      beneficiaryPubkey = new PublicKey(benStr)
     } catch {
       setError("Invalid Solana address.")
       return
@@ -81,7 +118,7 @@ export function AddSolDialog({
         )
         toast.success(
           <span>
-            mSOL locked.{" "}
+            mSOL locked for <strong>{selected.name}</strong>.{" "}
             <a
               href={solanaTxUrl(depositSig)}
               className="underline"
@@ -112,7 +149,7 @@ export function AddSolDialog({
         )
         toast.success(
           <span>
-            SOL locked in vault.{" "}
+            SOL locked for <strong>{selected.name}</strong>.{" "}
             <a
               href={solanaTxUrl(sig)}
               className="underline"
@@ -124,14 +161,9 @@ export function AddSolDialog({
           </span>
         )
       }
-      if (childName.trim()) {
-        updateChildTotal(childName.trim(), amountNum)
-      }
+      updateChildTotal(selected.name, amountNum)
       await refreshVaults()
       onClose()
-      setBeneficiary("")
-      setAmount("")
-      setUnlockDate("")
     } catch (err) {
       setError((err as Error).message?.slice(0, 80) ?? "Transaction failed")
     } finally {
@@ -143,47 +175,58 @@ export function AddSolDialog({
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add SOL (lock in vault)</DialogTitle>
+          <DialogTitle>Lock SOL for a child</DialogTitle>
           <DialogDescription className="space-y-1">
-            <span className="block">SOL is locked in the vault on-chain until the unlock date. Only the child&apos;s wallet can withdraw after that; no one can withdraw early.</span>
-            {lockAsMsol && (
-              <span className="block text-muted-foreground">
-                With mSOL: funds stay staked until unlock. After unlock the child withdraws mSOL to their wallet; they can then unstake mSOL → SOL via Marinade if they want.
-              </span>
-            )}
+            <span className="block">
+              Choose the child — the lock is bound to <strong>their</strong> on-chain vault
+              (their wallet). Each lock appears under that child&apos;s card.
+            </span>
             {!lockAsMsol && isMainnetVaults() && (
-              <span className="block">Optionally lock as mSOL to earn {marinadeApy != null ? `~${marinadeApy}% APY` : "APY"} (mainnet).</span>
+              <span className="block">
+                Optionally lock as mSOL for{" "}
+                {marinadeApy != null ? `~${marinadeApy}% APY` : "yield"} (mainnet).
+              </span>
             )}
             {!isMainnetVaults() && (
               <span className="block text-muted-foreground">
-                You&apos;re on testnet — use test SOL only. Switch Phantom to Testnet in settings.
+                Testnet: use test SOL; Phantom on Testnet.
               </span>
             )}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label>Child / goal (optional)</Label>
+            <Label>Child *</Label>
             <select
+              required
               className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
-              value={childName}
-              onChange={(e) => setChildName(e.target.value)}
+              value={selectedIdx === "" ? "" : String(selectedIdx)}
+              onChange={(e) => {
+                const v = e.target.value
+                setSelectedIdx(v === "" ? "" : parseInt(v, 10))
+              }}
             >
               <option value="">Select child</option>
-              {children.map((c) => (
-                <option key={c.name} value={c.name}>
+              {children.map((c, i) => (
+                <option key={`${i}-${c.beneficiaryAddress ?? ""}`} value={String(i)}>
                   {c.name}
+                  {!c.beneficiaryAddress ? " (register wallet first)" : ""}
                 </option>
               ))}
             </select>
           </div>
           <div className="space-y-2">
-            <Label>Child&apos;s Solana wallet address *</Label>
+            <Label>Child&apos;s vault wallet (bound)</Label>
             <Input
-              placeholder="Address that can withdraw after unlock"
+              readOnly
+              className="font-mono text-xs bg-muted/50"
+              placeholder="Select a child above"
               value={beneficiary}
-              onChange={(e) => setBeneficiary(e.target.value)}
             />
+            <p className="text-[11px] text-muted-foreground">
+              This address receives funds after unlock. It comes from the child&apos;s
+              on-chain registration.
+            </p>
           </div>
           {isMainnetVaults() && (
             <div className="flex items-center gap-2">
@@ -195,7 +238,7 @@ export function AddSolDialog({
                 className="h-4 w-4 rounded border-input"
               />
               <Label htmlFor="lock-msol" className="cursor-pointer">
-                Earn {marinadeApy != null ? `~${marinadeApy}% ` : ""}APY — lock as mSOL (mainnet)
+                Lock as mSOL (mainnet)
               </Label>
             </div>
           )}
@@ -217,15 +260,13 @@ export function AddSolDialog({
               onChange={(e) => setUnlockDate(e.target.value)}
             />
           </div>
-          {error && (
-            <p className="text-sm text-destructive">{error}</p>
-          )}
+          {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
             <Button type="submit" disabled={loading}>
-              {loading ? "Creating…" : lockAsMsol ? "Stake SOL → mSOL & lock in vault" : "Create vault & lock SOL"}
+              {loading ? "Signing…" : lockAsMsol ? "Stake & lock mSOL" : "Lock SOL"}
             </Button>
           </DialogFooter>
         </form>

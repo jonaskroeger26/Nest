@@ -155,7 +155,15 @@ export function HomeContent() {
                   </h2>
                   <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
                     {enrichedChildren.map((child) => (
-                      <ChildCard key={child.name} {...child} />
+                      <ChildCard
+                        key={`${child.name}-${child.beneficiaryAddress ?? ""}`}
+                        name={child.name}
+                        age={child.age}
+                        avatar={child.avatar}
+                        totalSaved={child.totalSaved}
+                        goals={child.goals}
+                        beneficiaryAddress={child.beneficiaryAddress}
+                      />
                     ))}
                   </div>
                   {orphanVaults.length > 0 && (
