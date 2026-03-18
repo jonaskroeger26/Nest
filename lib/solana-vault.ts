@@ -230,7 +230,10 @@ function hintFromProgramLogs(logText: string): string | null {
   if (/insufficient lamports|Insufficient funds/i.test(logText))
     return "Need a little more SOL in your wallet for account rent (~0.002 SOL on testnet)."
   if (/InstructionFallbackNotFound|custom program error: 0x65|0x65\b/i.test(logText))
-    return "Program on this network is outdated. Use testnet + latest kids-vault deploy."
+    return (
+      "On-chain program is still the OLD build (no register_child). Upgrade with the .so at " +
+      "target/sbpf-solana-solana/release/kids_vault.so — see Nest README “program outdated”."
+    )
   if (/Program .* failed: custom program error/i.test(logText))
     return "On-chain program rejected the transaction — check Phantom is on the same network as Nest (testnet)."
   return null
@@ -371,7 +374,10 @@ function toUserMessage(e: unknown): string | null {
       "NEXT_PUBLIC_SOLANA_CLUSTER=testnet. For mainnet, deploy kids-vault there and set the program ID."
     )
   if (/0x65|InstructionFallbackNotFound|Fallback functions are not supported/i.test(msg))
-    return "Program version mismatch. Redeploy kids-vault (see README)."
+    return (
+      "Kids-vault on-chain is the old binary. Run anchor upgrade from " +
+      "target/sbpf-solana-solana/release/kids_vault.so (see Nest README)."
+    )
   if (/may not be used for executing instructions/i.test(msg))
     return "Program not executable here. Deploy kids-vault to the cluster your app uses."
   if (/insufficient funds|Transfer: insufficient lamports/i.test(msg))

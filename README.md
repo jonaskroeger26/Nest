@@ -9,7 +9,37 @@
 - **Each SOL lock:** `create_vault` (or top-up transfer) — toast links to Solscan.
 - **Withdraw:** only the **child’s wallet** can sign after unlock (enforced in the program).
 
-Redeploy **kids-vault** from this repo after pulling the latest `programs/kids-vault/src/lib.rs`; older deployments won’t have `register_child` / `set_parent_display_name`. Until you redeploy, Nest still loads legacy children from Supabase.
+**If Nest shows “program outdated” / `register_child` fails with 0x65** while Phantom + Vercel are already on **testnet**: the **on-chain bytecode** at `3be5xt…` is still the **old build** (smaller `.so`, no `register_child`). Your env vars are not the bug.
+
+1. **Anchor 0.32** often puts the built program here (not always `target/deploy/`):
+
+   `target/sbpf-solana-solana/release/kids_vault.so` (~370KB with `register_child`)
+
+2. **Upgrade** that file (needs **~2.6+ SOL** on the upgrade authority wallet after any extend):
+
+   ```bash
+   cd /path/to/snake-dapp   # workspace root with programs/kids-vault
+   anchor build -p kids_vault
+   SO=target/sbpf-solana-solana/release/kids_vault.so
+   ```
+
+3. If `anchor upgrade` errors with **0x1** or “insufficient”, **extend** program data first (new binary is larger than old ~293KB):
+
+   ```bash
+   solana program extend 3be5xtB1AUiCxQ3dPn8bEt95VrzzEEW2cJym2wXo4rnN 80000 \
+     --url https://api.testnet.solana.com
+   ```
+
+4. Then:
+
+   ```bash
+   anchor upgrade "$SO" --program-id 3be5xtB1AUiCxQ3dPn8bEt95VrzzEEW2cJym2wXo4rnN \
+     --provider.cluster testnet
+   ```
+
+Fund the deploy wallet via [faucet.solana.com](https://faucet.solana.com) (Testnet) if balance is low.
+
+Until this upgrade succeeds, Nest still loads legacy children from Supabase and **register child on-chain** will keep failing.
 
 ## Testnet (try vaults first)
 
