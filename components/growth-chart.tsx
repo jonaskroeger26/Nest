@@ -2,28 +2,26 @@
 
 import { useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts"
 import { useChildren } from "@/context/children-context"
 import type { Child } from "@/context/children-context"
 import { useSolPrice, solToUsdFormatted } from "@/hooks/use-sol-price"
 
-/** Distinct fills that work inside SVG (match app chart palette). */
-const CHART_FILLS = [
-  "oklch(0.55 0.15 160)",
-  "oklch(0.70 0.12 80)",
-  "oklch(0.45 0.10 200)",
-  "oklch(0.65 0.08 160)",
-  "oklch(0.80 0.10 80)",
-]
+/** Theme-aware (light/dark) via globals.css */
+const CHART_VARS = [
+  "var(--color-chart-1)",
+  "var(--color-chart-2)",
+  "var(--color-chart-3)",
+  "var(--color-chart-4)",
+  "var(--color-chart-5)",
+] as const
+
+function initials(name: string) {
+  const parts = name.trim().split(/\s+/)
+  if (parts.length >= 2) {
+    return (parts[0]![0]! + parts[parts.length - 1]![0]!).toUpperCase()
+  }
+  return name.slice(0, 2).toUpperCase() || "?"
+}
 
 export function GrowthChart({
   childrenOverride,
@@ -40,54 +38,42 @@ export function GrowthChart({
     [children]
   )
 
-  const chartData = useMemo(() => {
+  const rows = useMemo(() => {
     return children.map((c, i) => {
       const sol = c.totalSaved
-      const valueUsd = usd != null ? sol * usd : sol
-      const pct =
-        totalSol > 0 ? Math.round((sol / totalSol) * 1000) / 10 : 0
+      const pctRaw = totalSol > 0 ? (sol / totalSol) * 100 : 0
+      const pct = Math.round(pctRaw * 10) / 10
       return {
-        name:
-          c.name.length > 14 ? `${c.name.slice(0, 14)}…` : c.name,
         fullName: c.name,
         sol,
-        value: valueUsd,
         pct,
-        fill: CHART_FILLS[i % CHART_FILLS.length]!,
+        pctRaw,
+        fill: CHART_VARS[i % CHART_VARS.length]!,
+        initial: initials(c.name),
       }
     })
-  }, [children, totalSol, usd])
+  }, [children, totalSol])
 
-  const maxVal = useMemo(() => {
-    const m = Math.max(...chartData.map((d) => d.value), 0)
-    return m > 0 ? m * 1.08 : 1
-  }, [chartData])
-
-  const fmtAxis = (value: number) => {
-    if (usd != null) {
-      if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`
-      if (value >= 1_000) return `$${(value / 1_000).toFixed(1)}k`
-      return `$${Math.round(value)}`
-    }
-    if (value >= 1000) return `${(value / 1000).toFixed(1)}k SOL`
-    return `${value.toFixed(2)} SOL`
-  }
-
-  const chartHeight = Math.min(360, Math.max(160, children.length * 52 + 72))
+  const positiveRows = useMemo(
+    () => rows.filter((r) => r.sol > 0),
+    [rows]
+  )
 
   if (children.length === 0) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg font-semibold">Portfolio</CardTitle>
+      <Card className="border-border/80 shadow-sm">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg font-semibold tracking-tight">
+            Portfolio
+          </CardTitle>
           <p className="text-sm text-muted-foreground">
-            See how savings split across your children
+            How your locked savings split across children
           </p>
         </CardHeader>
         <CardContent>
-          <div className="flex h-[200px] items-center justify-center rounded-xl border border-dashed border-border bg-muted/20">
-            <p className="max-w-[260px] text-center text-sm text-muted-foreground">
-              Add children and lock SOL to see your portfolio breakdown here.
+          <div className="flex min-h-[180px] items-center justify-center rounded-2xl border border-dashed border-border/70 bg-gradient-to-b from-muted/40 to-muted/10 px-6 py-10">
+            <p className="max-w-[280px] text-center text-sm leading-relaxed text-muted-foreground">
+              Add children and lock SOL to see your breakdown here.
             </p>
           </div>
         </CardContent>
@@ -96,112 +82,132 @@ export function GrowthChart({
   }
 
   return (
-    <Card className="overflow-hidden">
-      <CardHeader className="pb-2">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <Card className="overflow-hidden border-border/80 shadow-sm">
+      <CardHeader className="space-y-1 pb-4">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <CardTitle className="text-lg font-semibold">Portfolio</CardTitle>
+            <CardTitle className="text-lg font-semibold tracking-tight">
+              Portfolio
+            </CardTitle>
             <p className="text-sm text-muted-foreground">
-              Balance by child — live totals
-              {usd == null ? " (USD when price loads)" : ""}
+              Locked SOL by child
             </p>
           </div>
-          <div className="rounded-xl border border-border bg-muted/30 px-4 py-3 text-right">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Total locked
-            </p>
-            <p className="text-2xl font-semibold tabular-nums text-foreground">
-              {totalSol.toFixed(3)} <span className="text-base font-normal">SOL</span>
-            </p>
-            {usd != null && totalSol > 0 ? (
-              <p className="text-sm text-muted-foreground tabular-nums">
-                ≈ {solToUsdFormatted(totalSol, usd)}
+          {totalSol > 0 ? (
+            <div className="mt-2 text-left sm:mt-0 sm:text-right">
+              <p className="text-xs font-medium text-muted-foreground">
+                Total
               </p>
-            ) : null}
-          </div>
+              <p className="text-2xl font-semibold tabular-nums tracking-tight text-foreground">
+                {totalSol.toFixed(3)}
+                <span className="ml-1.5 text-base font-medium text-muted-foreground">
+                  SOL
+                </span>
+              </p>
+              {usd != null ? (
+                <p className="text-sm tabular-nums text-muted-foreground">
+                  {solToUsdFormatted(totalSol, usd)}
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">USD after price load</p>
+              )}
+            </div>
+          ) : null}
         </div>
       </CardHeader>
-      <CardContent className="pt-2">
+
+      <CardContent className="space-y-6 pt-0">
         {totalSol === 0 ? (
-          <div className="flex h-[200px] items-center justify-center rounded-xl border border-dashed border-border bg-muted/20">
-            <p className="max-w-[280px] text-center text-sm text-muted-foreground">
-              Lock SOL for your children to see how it&apos;s allocated across
-              their profiles.
+          <div className="flex min-h-[180px] items-center justify-center rounded-2xl border border-dashed border-border/70 bg-gradient-to-b from-muted/40 to-muted/10 px-6 py-10">
+            <p className="max-w-[300px] text-center text-sm leading-relaxed text-muted-foreground">
+              Lock SOL on a child&apos;s goals to see how your portfolio is
+              allocated.
             </p>
           </div>
         ) : (
-          <div className="space-y-3">
-            <div style={{ height: chartHeight }} className="w-full min-h-[160px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  layout="vertical"
-                  data={chartData}
-                  margin={{ top: 8, right: 16, left: 4, bottom: 8 }}
-                  barCategoryGap={12}
-                >
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    horizontal={false}
-                    className="stroke-border/60"
-                  />
-                  <XAxis
-                    type="number"
-                    domain={[0, maxVal]}
-                    tickFormatter={fmtAxis}
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
-                  />
-                  <YAxis
-                    type="category"
-                    dataKey="name"
-                    width={100}
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fontSize: 12, fill: "var(--foreground)" }}
-                  />
-                  <Tooltip
-                    cursor={{ fill: "var(--muted)", opacity: 0.15 }}
-                    content={({ active, payload }) => {
-                      if (!active || !payload?.length) return null
-                      const row = payload[0]?.payload as (typeof chartData)[0]
-                      if (!row) return null
-                      return (
-                        <div className="rounded-lg border border-border bg-card px-3 py-2 text-sm shadow-md">
-                          <p className="font-medium">{row.fullName}</p>
-                          <p className="tabular-nums text-muted-foreground">
-                            {row.sol.toFixed(4)} SOL
-                            {usd != null ? (
-                              <>
-                                {" "}
-                                · {solToUsdFormatted(row.sol, usd)}
-                              </>
-                            ) : null}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {row.pct}% of portfolio
-                          </p>
-                        </div>
-                      )
+          <>
+            {/* Composition strip */}
+            <div>
+              <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Split
+              </p>
+              <div
+                className="flex h-2.5 w-full overflow-hidden rounded-full bg-muted/80 ring-1 ring-border/40"
+                role="img"
+                aria-label="Portfolio split by child"
+              >
+                {positiveRows.map((r, i) => (
+                  <div
+                    key={`${r.fullName}-seg-${i}`}
+                    title={`${r.fullName}: ${r.pct}%`}
+                    className={
+                      "h-full min-w-[3px] transition-[flex-grow] duration-300 " +
+                      (i === 0 ? "rounded-l-full " : "") +
+                      (i === positiveRows.length - 1 ? "rounded-r-full" : "")
+                    }
+                    style={{
+                      flexGrow: Math.max(r.pctRaw, 0.001),
+                      flexBasis: 0,
+                      backgroundColor: r.fill,
                     }}
                   />
-                  <Bar
-                    dataKey="value"
-                    radius={[0, 8, 8, 0]}
-                    maxBarSize={36}
-                  >
-                    {chartData.map((entry, i) => (
-                      <Cell key={`${entry.fullName}-${i}`} fill={entry.fill} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+                ))}
+              </div>
             </div>
-            <p className="text-center text-xs text-muted-foreground">
-              Historical growth over time will appear once we chart lock events;
-              for now this shows your current split.
+
+            {/* Per-child rows */}
+            <ul className="space-y-2">
+              {rows.map((r, i) => (
+                <li
+                  key={`${r.fullName}-${i}`}
+                  className="rounded-2xl border border-border/60 bg-muted/20 px-4 py-3 transition-colors hover:bg-muted/35"
+                >
+                  <div className="flex items-start gap-3">
+                    <div
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-xs font-semibold text-white shadow-sm"
+                      style={{ backgroundColor: r.fill }}
+                      aria-hidden
+                    >
+                      {r.initial}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="truncate font-medium text-foreground">
+                          {r.fullName}
+                        </span>
+                        <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
+                          {r.pct}%
+                        </span>
+                      </div>
+                      <div className="mt-2 h-1 overflow-hidden rounded-full bg-muted/90">
+                        <div
+                          className="h-full rounded-full transition-all duration-500"
+                          style={{
+                            width: `${Math.min(100, Math.max(r.pctRaw, r.sol > 0 ? 2 : 0))}%`,
+                            backgroundColor: r.fill,
+                          }}
+                        />
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm tabular-nums text-muted-foreground">
+                        <span>{r.sol.toFixed(4)} SOL</span>
+                        {usd != null && r.sol > 0 ? (
+                          <>
+                            <span className="text-border">·</span>
+                            <span>{solToUsdFormatted(r.sol, usd)}</span>
+                          </>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+
+            <p className="text-center text-[11px] leading-snug text-muted-foreground/90">
+              Totals reflect current on-chain locks. A timeline view will come
+              when history is indexed.
             </p>
-          </div>
+          </>
         )}
       </CardContent>
     </Card>
