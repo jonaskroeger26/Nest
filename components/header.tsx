@@ -8,7 +8,11 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useWallet } from "@/hooks/use-wallet"
 import { useUser } from "@/context/user-context"
 import { ConnectNameDialog } from "@/components/dialogs/connect-name-dialog"
-import { isMainnetVaults } from "@/lib/solana-config"
+import {
+  getKidsVaultProgramId,
+  getSolanaCluster,
+  isMainnetVaults,
+} from "@/lib/solana-config"
 import { Badge } from "@/components/ui/badge"
 import {
   Dialog,
