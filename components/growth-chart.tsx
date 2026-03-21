@@ -1,22 +1,38 @@
 "use client"
 
-import { useMemo } from "react"
+import { useId, useMemo, useState } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { useChildren } from "@/context/children-context"
 import type { Child } from "@/context/children-context"
 import { useSolPrice, solToUsdFormatted } from "@/hooks/use-sol-price"
+import {
+  usePortfolioHistory,
+  formatPctChange,
+  type PortfolioRange,
+} from "@/hooks/use-portfolio-history"
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts"
 
-/** Mint palette aligned with Nest marketing / mock */
+/** Mint palette — stats / list rows */
 const mint = {
-  bar: "bg-[#6FA889]",
-  barHover: "hover:bg-[#5F9878]",
-  strip: "bg-[#E8F4EC]",
   pill: "bg-[#E8F4EC] dark:bg-emerald-950/35",
   statGreen: "text-[#2D6A4F] dark:text-emerald-300",
   avatar: "bg-[#D4ECD9] text-[#2D6A4F] dark:bg-emerald-900/50 dark:text-emerald-200",
 } as const
 
-const BAR_COUNT = 11
+const RANGE_TABS: { id: PortfolioRange; label: string }[] = [
+  { id: "1d", label: "24H" },
+  { id: "7d", label: "7D" },
+  { id: "30d", label: "30D" },
+  { id: "all", label: "All" },
+]
 
 function initials(name: string) {
   const parts = name.trim().split(/\s+/)
@@ -41,20 +57,22 @@ function goalSubtitle(c: Child): string {
   return short || "Goal"
 }
 
-/** Upward stepped heights (mock-style), scaled when portfolio > 0 */
-function useBarFractions(totalSol: number) {
-  return useMemo(() => {
-    const base = Array.from({ length: BAR_COUNT }, (_, i) => {
-      const t = i / (BAR_COUNT - 1)
-      // Ease-out: low left → tall right (like the mock)
-      const eased = 1 - Math.pow(1 - t, 1.65)
-      return 0.18 + eased * 0.82
+function formatAxisTime(ts: number, range: PortfolioRange) {
+  const d = new Date(ts)
+  if (range === "1d") {
+    return d.toLocaleTimeString(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
     })
-    if (totalSol <= 0) {
-      return base.map(() => 0.08)
-    }
-    return base
-  }, [totalSol])
+  }
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+}
+
+function formatTooltipUsd(n: number) {
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`
+  if (n >= 10_000) return `$${(n / 1_000).toFixed(2)}k`
+  if (n >= 1000) return `$${n.toFixed(0)}`
+  return `$${n.toFixed(2)}`
 }
 
 export function GrowthChart({
@@ -67,25 +85,59 @@ export function GrowthChart({
   const { usdPerSol } = useSolPrice()
   const usd = usdPerSol ?? null
 
+  const [range, setRange] = useState<PortfolioRange>("7d")
+
   const totalSol = useMemo(
     () => children.reduce((sum, c) => sum + c.totalSaved, 0),
     [children]
   )
 
-  const barFractions = useBarFractions(totalSol)
+  const {
+    hydrated,
+    currentUsd,
+    filterByRange,
+    pctChangeInRange,
+    stats,
+  } = usePortfolioHistory(totalSol, usd)
 
-  /** Illustrative growth label until on-chain history exists (matches landing mock tone). */
-  const growthLabel = totalSol > 0 ? "+7.2%" : "—"
+  const chartUid = useId().replace(/:/g, "")
+  const rangeChange = pctChangeInRange(range)
+  const up = rangeChange != null && rangeChange >= 0
+  const stroke = up ? "#16a34a" : "#dc2626"
+  const fillId = `nest-port-${chartUid}-${up ? "u" : "d"}`
+
+  const chartData = useMemo(() => {
+    const slice = filterByRange(range)
+    const mapped = slice.map((s) => ({
+      t: s.t,
+      usd: s.usd,
+      sol: s.sol,
+    }))
+    if (mapped.length === 0 && currentUsd != null && hydrated) {
+      const now = Date.now()
+      return [
+        { t: now - 86_400_000, usd: currentUsd, sol: totalSol },
+        { t: now, usd: currentUsd, sol: totalSol },
+      ]
+    }
+    if (mapped.length === 1) {
+      const p = mapped[0]!
+      return [
+        { t: p.t - 120_000, usd: p.usd, sol: p.sol },
+        p,
+      ]
+    }
+    return mapped
+  }, [filterByRange, range, currentUsd, hydrated, totalSol])
 
   if (children.length === 0) {
     return (
       <Card className="overflow-hidden rounded-2xl border border-[#D4ECD9]/80 bg-card shadow-sm dark:border-emerald-900/40">
         <CardContent className="p-6">
-          <div
-            className={`flex min-h-[200px] items-center justify-center rounded-xl border border-dashed border-[#B8DCC4] ${mint.strip} px-6 py-10 dark:border-emerald-800/50`}
-          >
+          <div className="flex min-h-[200px] items-center justify-center rounded-xl border border-dashed border-[#B8DCC4] bg-[#E8F4EC]/60 px-6 py-10 dark:border-emerald-800/50 dark:bg-emerald-950/20">
             <p className="max-w-[280px] text-center text-sm leading-relaxed text-muted-foreground">
-              Add children and lock SOL to see your overview and growth chart.
+              Add children and lock SOL to track portfolio value like an
+              exchange chart.
             </p>
           </div>
         </CardContent>
@@ -96,7 +148,169 @@ export function GrowthChart({
   return (
     <Card className="overflow-hidden rounded-2xl border border-[#D4ECD9]/80 bg-card shadow-sm dark:border-emerald-900/40">
       <CardContent className="space-y-6 p-6">
-        {/* Top stats — three mint pills like the mock */}
+        {/* Hero — USD value + range change (CMC / Binance style) */}
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Portfolio value
+            </p>
+            {currentUsd != null ? (
+              <>
+                <p className="text-3xl font-bold tabular-nums tracking-tight text-foreground sm:text-4xl">
+                  {formatTooltipUsd(currentUsd)}
+                </p>
+                <p className="mt-0.5 text-sm tabular-nums text-muted-foreground">
+                  {totalSol.toFixed(4)} SOL
+                  {usd != null ? (
+                    <span className="ml-2">
+                      · {solToUsdFormatted(1, usd)} / SOL
+                    </span>
+                  ) : null}
+                </p>
+              </>
+            ) : (
+              <p className="mt-1 text-lg text-muted-foreground">
+                Loading price…
+              </p>
+            )}
+          </div>
+          {rangeChange != null ? (
+            <div
+              className={
+                "rounded-xl px-4 py-2 text-right tabular-nums " +
+                (up
+                  ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                  : "bg-red-500/10 text-red-700 dark:text-red-400")
+              }
+            >
+              <p className="text-xs font-medium text-muted-foreground">
+                {range === "1d"
+                  ? "24h"
+                  : range === "7d"
+                    ? "7d"
+                    : range === "30d"
+                      ? "30d"
+                      : "All time"}
+              </p>
+              <p className="text-xl font-semibold">
+                {formatPctChange(rangeChange)}
+              </p>
+            </div>
+          ) : null}
+        </div>
+
+        {/* Range tabs */}
+        <div className="flex flex-wrap gap-2">
+          {RANGE_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setRange(tab.id)}
+              className={
+                "rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors " +
+                (range === tab.id
+                  ? "bg-foreground text-background"
+                  : "bg-muted/80 text-muted-foreground hover:bg-muted")
+              }
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Chart */}
+        <div className="rounded-xl border border-border/60 bg-muted/10 p-2 sm:p-4 dark:bg-muted/5">
+          <div className="h-[220px] w-full min-h-[200px]">
+            {hydrated && chartData.length >= 2 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart
+                  data={chartData}
+                  margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+                >
+                  <defs>
+                    <linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
+                      <stop
+                        offset="0%"
+                        stopColor={stroke}
+                        stopOpacity={0.35}
+                      />
+                      <stop
+                        offset="100%"
+                        stopColor={stroke}
+                        stopOpacity={0}
+                      />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    vertical={false}
+                    className="stroke-border/50"
+                  />
+                  <XAxis
+                    dataKey="t"
+                    type="number"
+                    domain={["dataMin", "dataMax"]}
+                    tickFormatter={(ts) => formatAxisTime(ts as number, range)}
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+                    minTickGap={28}
+                  />
+                  <YAxis
+                    domain={["auto", "auto"]}
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+                    tickFormatter={(v) => formatTooltipUsd(Number(v))}
+                    width={56}
+                  />
+                  <Tooltip
+                    content={({ active, payload }) => {
+                      if (!active || !payload?.[0]) return null
+                      const row = payload[0].payload as {
+                        t: number
+                        usd: number
+                        sol: number
+                      }
+                      return (
+                        <div className="rounded-lg border border-border bg-card px-3 py-2 text-sm shadow-lg">
+                          <p className="text-xs text-muted-foreground">
+                            {new Date(row.t).toLocaleString()}
+                          </p>
+                          <p className="font-semibold tabular-nums">
+                            {formatTooltipUsd(row.usd)}
+                          </p>
+                          <p className="text-xs tabular-nums text-muted-foreground">
+                            {row.sol.toFixed(4)} SOL
+                          </p>
+                        </div>
+                      )
+                    }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="usd"
+                    stroke={stroke}
+                    strokeWidth={2}
+                    fill={`url(#${fillId})`}
+                    dot={false}
+                    activeDot={{ r: 4, strokeWidth: 0 }}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                Preparing chart…
+              </div>
+            )}
+          </div>
+          <p className="mt-2 px-1 text-center text-[11px] leading-snug text-muted-foreground">
+            Value = locked SOL × live SOL price. History is saved on this device
+            so the line moves when price or balances change.
+          </p>
+        </div>
+
+        {/* Summary pills */}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div
             className={`rounded-xl px-4 py-3 ${mint.pill} ring-1 ring-[#C5E3D1]/60 dark:ring-emerald-800/40`}
@@ -130,25 +344,30 @@ export function GrowthChart({
             className={`rounded-xl px-4 py-3 ${mint.pill} ring-1 ring-[#C5E3D1]/60 dark:ring-emerald-800/40`}
           >
             <p className="text-xs font-medium text-muted-foreground">
-              Growth
+              24h change
             </p>
             <p
-              className={`mt-1 text-2xl font-bold tabular-nums ${mint.statGreen}`}
+              className={
+                "mt-1 text-2xl font-bold tabular-nums " +
+                (stats.change1d == null
+                  ? "text-muted-foreground"
+                  : stats.change1d >= 0
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : "text-red-600 dark:text-red-400")
+              }
             >
-              {growthLabel}
+              {formatPctChange(stats.change1d)}
             </p>
-            {totalSol > 0 ? (
-              <p className="mt-0.5 text-[10px] text-muted-foreground">
-                Illustrative · history soon
-              </p>
-            ) : null}
           </div>
         </div>
 
-        {/* Child rows — avatar, name + goal, SOL right */}
+        {/* Child rows */}
         <ul className="divide-y divide-border/60">
           {children.map((c, i) => (
-            <li key={`${c.name}-${i}`} className="flex items-center gap-3 py-3 first:pt-0">
+            <li
+              key={`${c.name}-${i}`}
+              className="flex items-center gap-3 py-3 first:pt-0"
+            >
               <div
                 className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${mint.avatar}`}
                 aria-hidden
@@ -169,38 +388,6 @@ export function GrowthChart({
             </li>
           ))}
         </ul>
-
-        {/* Portfolio growth — vertical bars, no axes (mock) */}
-        <div>
-          <p className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Portfolio growth
-          </p>
-          <div
-            className={`rounded-xl ${mint.strip} px-4 pb-4 pt-6 ring-1 ring-[#C5E3D1]/50 dark:ring-emerald-800/40`}
-          >
-            <div
-              className="flex h-36 items-end justify-between gap-1.5 sm:gap-2"
-              role="img"
-              aria-label="Illustrative portfolio growth over time"
-            >
-              {barFractions.map((frac, i) => (
-                <div
-                  key={i}
-                  className="flex h-full min-h-0 flex-1 flex-col justify-end"
-                >
-                  <div
-                    className={`w-full min-h-[6px] rounded-t-md ${mint.bar} ${mint.barHover} transition-all duration-500`}
-                    style={{ height: `${frac * 100}%` }}
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
-          <p className="mt-2 text-center text-[11px] text-muted-foreground">
-            Bars show an illustrative path to your current total; on-chain
-            history will replace this when indexed.
-          </p>
-        </div>
       </CardContent>
     </Card>
   )
