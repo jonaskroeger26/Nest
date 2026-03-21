@@ -1,26 +1,60 @@
 "use client"
 
 import { useMemo } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { useChildren } from "@/context/children-context"
 import type { Child } from "@/context/children-context"
 import { useSolPrice, solToUsdFormatted } from "@/hooks/use-sol-price"
 
-/** Theme-aware (light/dark) via globals.css */
-const CHART_VARS = [
-  "var(--color-chart-1)",
-  "var(--color-chart-2)",
-  "var(--color-chart-3)",
-  "var(--color-chart-4)",
-  "var(--color-chart-5)",
-] as const
+/** Mint palette aligned with Nest marketing / mock */
+const mint = {
+  bar: "bg-[#6FA889]",
+  barHover: "hover:bg-[#5F9878]",
+  strip: "bg-[#E8F4EC]",
+  pill: "bg-[#E8F4EC] dark:bg-emerald-950/35",
+  statGreen: "text-[#2D6A4F] dark:text-emerald-300",
+  avatar: "bg-[#D4ECD9] text-[#2D6A4F] dark:bg-emerald-900/50 dark:text-emerald-200",
+} as const
+
+const BAR_COUNT = 11
 
 function initials(name: string) {
   const parts = name.trim().split(/\s+/)
   if (parts.length >= 2) {
     return (parts[0]![0]! + parts[parts.length - 1]![0]!).toUpperCase()
   }
-  return name.slice(0, 2).toUpperCase() || "?"
+  return name.slice(0, 1).toUpperCase() || "?"
+}
+
+function goalSubtitle(c: Child): string {
+  const goals = c.goals
+  if (!goals?.length) return "Add a goal"
+  const g = goals.find((x) => x.locked) ?? goals[0]
+  if (!g) return "Add a goal"
+  const y =
+    typeof g.unlockDate === "string"
+      ? (g.unlockDate.match(/\d{4}/)?.[0] ??
+        (g.unlockDate.length >= 4 ? g.unlockDate.slice(-4) : ""))
+      : ""
+  const short = g.name.replace(/\s+fund$/i, "").trim()
+  if (y) return `${short} ${y}`
+  return short || "Goal"
+}
+
+/** Upward stepped heights (mock-style), scaled when portfolio > 0 */
+function useBarFractions(totalSol: number) {
+  return useMemo(() => {
+    const base = Array.from({ length: BAR_COUNT }, (_, i) => {
+      const t = i / (BAR_COUNT - 1)
+      // Ease-out: low left → tall right (like the mock)
+      const eased = 1 - Math.pow(1 - t, 1.65)
+      return 0.18 + eased * 0.82
+    })
+    if (totalSol <= 0) {
+      return base.map(() => 0.08)
+    }
+    return base
+  }, [totalSol])
 }
 
 export function GrowthChart({
@@ -38,42 +72,20 @@ export function GrowthChart({
     [children]
   )
 
-  const rows = useMemo(() => {
-    return children.map((c, i) => {
-      const sol = c.totalSaved
-      const pctRaw = totalSol > 0 ? (sol / totalSol) * 100 : 0
-      const pct = Math.round(pctRaw * 10) / 10
-      return {
-        fullName: c.name,
-        sol,
-        pct,
-        pctRaw,
-        fill: CHART_VARS[i % CHART_VARS.length]!,
-        initial: initials(c.name),
-      }
-    })
-  }, [children, totalSol])
+  const barFractions = useBarFractions(totalSol)
 
-  const positiveRows = useMemo(
-    () => rows.filter((r) => r.sol > 0),
-    [rows]
-  )
+  /** Illustrative growth label until on-chain history exists (matches landing mock tone). */
+  const growthLabel = totalSol > 0 ? "+7.2%" : "—"
 
   if (children.length === 0) {
     return (
-      <Card className="border-border/80 shadow-sm">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg font-semibold tracking-tight">
-            Portfolio
-          </CardTitle>
-          <p className="text-sm text-muted-foreground">
-            How your locked savings split across children
-          </p>
-        </CardHeader>
-        <CardContent>
-          <div className="flex min-h-[180px] items-center justify-center rounded-2xl border border-dashed border-border/70 bg-gradient-to-b from-muted/40 to-muted/10 px-6 py-10">
+      <Card className="overflow-hidden rounded-2xl border border-[#D4ECD9]/80 bg-card shadow-sm dark:border-emerald-900/40">
+        <CardContent className="p-6">
+          <div
+            className={`flex min-h-[200px] items-center justify-center rounded-xl border border-dashed border-[#B8DCC4] ${mint.strip} px-6 py-10 dark:border-emerald-800/50`}
+          >
             <p className="max-w-[280px] text-center text-sm leading-relaxed text-muted-foreground">
-              Add children and lock SOL to see your breakdown here.
+              Add children and lock SOL to see your overview and growth chart.
             </p>
           </div>
         </CardContent>
@@ -82,133 +94,113 @@ export function GrowthChart({
   }
 
   return (
-    <Card className="overflow-hidden border-border/80 shadow-sm">
-      <CardHeader className="space-y-1 pb-4">
-        <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <CardTitle className="text-lg font-semibold tracking-tight">
-              Portfolio
-            </CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Locked SOL by child
+    <Card className="overflow-hidden rounded-2xl border border-[#D4ECD9]/80 bg-card shadow-sm dark:border-emerald-900/40">
+      <CardContent className="space-y-6 p-6">
+        {/* Top stats — three mint pills like the mock */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div
+            className={`rounded-xl px-4 py-3 ${mint.pill} ring-1 ring-[#C5E3D1]/60 dark:ring-emerald-800/40`}
+          >
+            <p className="text-xs font-medium text-muted-foreground">
+              Total locked
+            </p>
+            <p
+              className={`mt-1 text-2xl font-bold tabular-nums tracking-tight ${mint.statGreen}`}
+            >
+              {totalSol.toFixed(1)}{" "}
+              <span className="text-lg font-semibold">SOL</span>
+            </p>
+            {usd != null && totalSol > 0 ? (
+              <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">
+                {solToUsdFormatted(totalSol, usd)}
+              </p>
+            ) : null}
+          </div>
+          <div
+            className={`rounded-xl px-4 py-3 ${mint.pill} ring-1 ring-[#C5E3D1]/60 dark:ring-emerald-800/40`}
+          >
+            <p className="text-xs font-medium text-muted-foreground">
+              Children
+            </p>
+            <p className="mt-1 text-2xl font-bold tabular-nums text-foreground">
+              {children.length}
             </p>
           </div>
-          {totalSol > 0 ? (
-            <div className="mt-2 text-left sm:mt-0 sm:text-right">
-              <p className="text-xs font-medium text-muted-foreground">
-                Total
+          <div
+            className={`rounded-xl px-4 py-3 ${mint.pill} ring-1 ring-[#C5E3D1]/60 dark:ring-emerald-800/40`}
+          >
+            <p className="text-xs font-medium text-muted-foreground">
+              Growth
+            </p>
+            <p
+              className={`mt-1 text-2xl font-bold tabular-nums ${mint.statGreen}`}
+            >
+              {growthLabel}
+            </p>
+            {totalSol > 0 ? (
+              <p className="mt-0.5 text-[10px] text-muted-foreground">
+                Illustrative · history soon
               </p>
-              <p className="text-2xl font-semibold tabular-nums tracking-tight text-foreground">
-                {totalSol.toFixed(3)}
-                <span className="ml-1.5 text-base font-medium text-muted-foreground">
-                  SOL
-                </span>
-              </p>
-              {usd != null ? (
-                <p className="text-sm tabular-nums text-muted-foreground">
-                  {solToUsdFormatted(totalSol, usd)}
-                </p>
-              ) : (
-                <p className="text-xs text-muted-foreground">USD after price load</p>
-              )}
-            </div>
-          ) : null}
+            ) : null}
+          </div>
         </div>
-      </CardHeader>
 
-      <CardContent className="space-y-6 pt-0">
-        {totalSol === 0 ? (
-          <div className="flex min-h-[180px] items-center justify-center rounded-2xl border border-dashed border-border/70 bg-gradient-to-b from-muted/40 to-muted/10 px-6 py-10">
-            <p className="max-w-[300px] text-center text-sm leading-relaxed text-muted-foreground">
-              Lock SOL on a child&apos;s goals to see how your portfolio is
-              allocated.
-            </p>
-          </div>
-        ) : (
-          <>
-            {/* Composition strip */}
-            <div>
-              <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Split
-              </p>
+        {/* Child rows — avatar, name + goal, SOL right */}
+        <ul className="divide-y divide-border/60">
+          {children.map((c, i) => (
+            <li key={`${c.name}-${i}`} className="flex items-center gap-3 py-3 first:pt-0">
               <div
-                className="flex h-2.5 w-full overflow-hidden rounded-full bg-muted/80 ring-1 ring-border/40"
-                role="img"
-                aria-label="Portfolio split by child"
+                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${mint.avatar}`}
+                aria-hidden
               >
-                {positiveRows.map((r, i) => (
-                  <div
-                    key={`${r.fullName}-seg-${i}`}
-                    title={`${r.fullName}: ${r.pct}%`}
-                    className={
-                      "h-full min-w-[3px] transition-[flex-grow] duration-300 " +
-                      (i === 0 ? "rounded-l-full " : "") +
-                      (i === positiveRows.length - 1 ? "rounded-r-full" : "")
-                    }
-                    style={{
-                      flexGrow: Math.max(r.pctRaw, 0.001),
-                      flexBasis: 0,
-                      backgroundColor: r.fill,
-                    }}
-                  />
-                ))}
+                {initials(c.name)}
               </div>
-            </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-semibold text-foreground">
+                  {c.name}
+                </p>
+                <p className="truncate text-sm text-muted-foreground">
+                  {goalSubtitle(c)}
+                </p>
+              </div>
+              <p className="shrink-0 text-base font-semibold tabular-nums text-foreground">
+                {c.totalSaved.toFixed(1)} SOL
+              </p>
+            </li>
+          ))}
+        </ul>
 
-            {/* Per-child rows */}
-            <ul className="space-y-2">
-              {rows.map((r, i) => (
-                <li
-                  key={`${r.fullName}-${i}`}
-                  className="rounded-2xl border border-border/60 bg-muted/20 px-4 py-3 transition-colors hover:bg-muted/35"
+        {/* Portfolio growth — vertical bars, no axes (mock) */}
+        <div>
+          <p className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Portfolio growth
+          </p>
+          <div
+            className={`rounded-xl ${mint.strip} px-4 pb-4 pt-6 ring-1 ring-[#C5E3D1]/50 dark:ring-emerald-800/40`}
+          >
+            <div
+              className="flex h-36 items-end justify-between gap-1.5 sm:gap-2"
+              role="img"
+              aria-label="Illustrative portfolio growth over time"
+            >
+              {barFractions.map((frac, i) => (
+                <div
+                  key={i}
+                  className="flex h-full min-h-0 flex-1 flex-col justify-end"
                 >
-                  <div className="flex items-start gap-3">
-                    <div
-                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-xs font-semibold text-white shadow-sm"
-                      style={{ backgroundColor: r.fill }}
-                      aria-hidden
-                    >
-                      {r.initial}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-baseline justify-between gap-2">
-                        <span className="truncate font-medium text-foreground">
-                          {r.fullName}
-                        </span>
-                        <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
-                          {r.pct}%
-                        </span>
-                      </div>
-                      <div className="mt-2 h-1 overflow-hidden rounded-full bg-muted/90">
-                        <div
-                          className="h-full rounded-full transition-all duration-500"
-                          style={{
-                            width: `${Math.min(100, Math.max(r.pctRaw, r.sol > 0 ? 2 : 0))}%`,
-                            backgroundColor: r.fill,
-                          }}
-                        />
-                      </div>
-                      <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm tabular-nums text-muted-foreground">
-                        <span>{r.sol.toFixed(4)} SOL</span>
-                        {usd != null && r.sol > 0 ? (
-                          <>
-                            <span className="text-border">·</span>
-                            <span>{solToUsdFormatted(r.sol, usd)}</span>
-                          </>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-                </li>
+                  <div
+                    className={`w-full min-h-[6px] rounded-t-md ${mint.bar} ${mint.barHover} transition-all duration-500`}
+                    style={{ height: `${frac * 100}%` }}
+                  />
+                </div>
               ))}
-            </ul>
-
-            <p className="text-center text-[11px] leading-snug text-muted-foreground/90">
-              Totals reflect current on-chain locks. A timeline view will come
-              when history is indexed.
-            </p>
-          </>
-        )}
+            </div>
+          </div>
+          <p className="mt-2 text-center text-[11px] text-muted-foreground">
+            Bars show an illustrative path to your current total; on-chain
+            history will replace this when indexed.
+          </p>
+        </div>
       </CardContent>
     </Card>
   )
