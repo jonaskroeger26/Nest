@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import Link from "next/link"
-import { Bird, Bell, Settings, Wallet } from "lucide-react"
+import { Bird, Bell, Copy, ExternalLink, Settings, Wallet } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useWallet } from "@/hooks/use-wallet"
@@ -26,7 +26,7 @@ import {
   setParentDisplayNameOnChain,
 } from "@/lib/solana-vault"
 import { signTransactionWithBrowserWallet } from "@/lib/wallet-sign"
-import { solanaTxUrl } from "@/lib/solana-explorer"
+import { solanaAccountUrl, solanaTxUrl } from "@/lib/solana-explorer"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,6 +35,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Separator } from "@/components/ui/separator"
 
 const NOTIF_READ_STORAGE_KEY = "nest_notifications_read_v1"
 
@@ -86,6 +87,15 @@ function saveReadIds(ids: Set<string>) {
   }
 }
 
+async function copyToClipboard(text: string, label: string) {
+  try {
+    await navigator.clipboard.writeText(text)
+    toast.success(`${label} copied`)
+  } catch {
+    toast.error("Could not copy")
+  }
+}
+
 export function Header() {
   const { address, isConnecting, connect, disconnect, connected } = useWallet()
   const { userName, setUserName } = useUser()
@@ -131,6 +141,19 @@ export function Header() {
       return next
     })
   }, [notifications])
+
+  const resetNotificationReadState = useCallback(() => {
+    try {
+      localStorage.removeItem(NOTIF_READ_STORAGE_KEY)
+    } catch {
+      /* ignore */
+    }
+    setReadNotificationIds(new Set())
+    toast.success("Notification badge reset")
+  }, [])
+
+  const cluster = getSolanaCluster()
+  const programId = getKidsVaultProgramId().toBase58()
 
   const shortAddress = address
     ? `${address.slice(0, 4)}…${address.slice(-4)}`
@@ -369,30 +392,151 @@ export function Header() {
             <Settings className="h-5 w-5 text-muted-foreground" />
           </Button>
           <Dialog open={showSettings} onOpenChange={setShowSettings}>
-            <DialogContent>
+            <DialogContent className="sm:max-w-lg max-h-[min(85vh,640px)] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Settings</DialogTitle>
                 <DialogDescription>
-                  Your greeting name is stored on-chain (signed by this wallet).
+                  Profile, wallet, and Nest preferences. Your display name is stored
+                  on-chain (signed by this wallet).
                 </DialogDescription>
               </DialogHeader>
-              <div className="space-y-4 pt-2">
-                <div className="space-y-2">
-                  <Label htmlFor="settings-name">Your name</Label>
-                  <Input
-                    id="settings-name"
-                    value={userName ?? ""}
-                    onChange={(e) => setUserName(e.target.value || null)}
-                    placeholder="e.g. James"
-                  />
-                </div>
-                <Button
-                  className="w-full"
-                  disabled={savingNameOnChain || !userName?.trim()}
-                  onClick={() => void saveSettingsNameOnChain()}
-                >
-                  {savingNameOnChain ? "Signing…" : "Save name on-chain"}
-                </Button>
+              <div className="space-y-6 pt-2">
+                <section className="space-y-3">
+                  <h3 className="text-sm font-semibold text-foreground">Profile</h3>
+                  <div className="space-y-2">
+                    <Label htmlFor="settings-name">Your name</Label>
+                    <Input
+                      id="settings-name"
+                      value={userName ?? ""}
+                      onChange={(e) => setUserName(e.target.value || null)}
+                      placeholder="e.g. James"
+                    />
+                  </div>
+                  <Button
+                    className="w-full"
+                    disabled={savingNameOnChain || !userName?.trim()}
+                    onClick={() => void saveSettingsNameOnChain()}
+                  >
+                    {savingNameOnChain ? "Signing…" : "Save name on-chain"}
+                  </Button>
+                </section>
+
+                <Separator />
+
+                <section className="space-y-3">
+                  <h3 className="text-sm font-semibold text-foreground">Wallet</h3>
+                  {address ? (
+                    <div className="space-y-2 rounded-lg border border-border bg-muted/30 p-3">
+                      <p className="text-xs text-muted-foreground">Connected address</p>
+                      <p className="break-all font-mono text-xs text-foreground">
+                        {address}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5"
+                          onClick={() => void copyToClipboard(address, "Address")}
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                          Copy
+                        </Button>
+                        <Button variant="outline" size="sm" className="gap-1.5" asChild>
+                          <a
+                            href={solanaAccountUrl(address)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                            Solscan
+                          </a>
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Connect a wallet to lock funds and manage children.
+                    </p>
+                  )}
+                </section>
+
+                <Separator />
+
+                <section className="space-y-3">
+                  <h3 className="text-sm font-semibold text-foreground">Network</h3>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-muted-foreground">Cluster</span>
+                      <span className="font-medium capitalize">{cluster}</span>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-xs text-muted-foreground">
+                        Kids vault program
+                      </span>
+                      <p className="break-all font-mono text-xs">{programId}</p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5"
+                        onClick={() => void copyToClipboard(programId, "Program ID")}
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                        Copy program ID
+                      </Button>
+                    </div>
+                  </div>
+                </section>
+
+                <Separator />
+
+                <section className="space-y-3">
+                  <h3 className="text-sm font-semibold text-foreground">
+                    Notifications
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Reset the bell badge if you want tips to show as unread again
+                    (stored in this browser only).
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    onClick={resetNotificationReadState}
+                  >
+                    Reset notification badge
+                  </Button>
+                </section>
+
+                <Separator />
+
+                <section className="space-y-2">
+                  <h3 className="text-sm font-semibold text-foreground">Legal</h3>
+                  <div className="flex flex-col gap-1 text-sm">
+                    <Link
+                      href="/privacy"
+                      className="text-primary hover:underline"
+                      onClick={() => setShowSettings(false)}
+                    >
+                      Privacy
+                    </Link>
+                    <Link
+                      href="/terms"
+                      className="text-primary hover:underline"
+                      onClick={() => setShowSettings(false)}
+                    >
+                      Terms
+                    </Link>
+                    <Link
+                      href="/security"
+                      className="text-primary hover:underline"
+                      onClick={() => setShowSettings(false)}
+                    >
+                      Security
+                    </Link>
+                  </div>
+                </section>
               </div>
             </DialogContent>
           </Dialog>
