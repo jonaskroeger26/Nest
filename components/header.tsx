@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useMemo, useCallback } from "react"
+import Link from "next/link"
 import { Bird, Bell, Settings, Wallet } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -26,6 +27,64 @@ import {
 } from "@/lib/solana-vault"
 import { signTransactionWithBrowserWallet } from "@/lib/wallet-sign"
 import { solanaTxUrl } from "@/lib/solana-explorer"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+
+const NOTIF_READ_STORAGE_KEY = "nest_notifications_read_v1"
+
+type InAppNotification = {
+  id: string
+  title: string
+  body: string
+  href?: string
+}
+
+const DEFAULT_NOTIFICATIONS: InAppNotification[] = [
+  {
+    id: "welcome",
+    title: "Welcome to Nest",
+    body: "Lock SOL for your kids with time-based vaults. Your child wallet withdraws after unlock.",
+    href: "/",
+  },
+  {
+    id: "testnet",
+    title: "Testnet mode",
+    body: "You’re on testnet — use a faucet for SOL. Mainnet locks and Marinade are for production.",
+  },
+  {
+    id: "dashboard",
+    title: "Your dashboard",
+    body: "Manage children, locks, and settings from the Nest app home.",
+    href: "/app",
+  },
+]
+
+function loadReadIds(): Set<string> {
+  if (typeof window === "undefined") return new Set()
+  try {
+    const raw = localStorage.getItem(NOTIF_READ_STORAGE_KEY)
+    if (!raw) return new Set()
+    const arr = JSON.parse(raw) as unknown
+    if (!Array.isArray(arr)) return new Set()
+    return new Set(arr.filter((x): x is string => typeof x === "string"))
+  } catch {
+    return new Set()
+  }
+}
+
+function saveReadIds(ids: Set<string>) {
+  try {
+    localStorage.setItem(NOTIF_READ_STORAGE_KEY, JSON.stringify([...ids]))
+  } catch {
+    /* ignore */
+  }
+}
 
 export function Header() {
   const { address, isConnecting, connect, disconnect, connected } = useWallet()
@@ -33,7 +92,45 @@ export function Header() {
   const [showConnectName, setShowConnectName] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [savingNameOnChain, setSavingNameOnChain] = useState(false)
+  const [readNotificationIds, setReadNotificationIds] = useState<Set<string>>(
+    () => new Set()
+  )
   const prevAddress = useRef<string | null>(null)
+
+  useEffect(() => {
+    setReadNotificationIds(loadReadIds())
+  }, [])
+
+  const notifications = useMemo(() => {
+    const list = [...DEFAULT_NOTIFICATIONS]
+    if (isMainnetVaults()) {
+      return list.filter((n) => n.id !== "testnet")
+    }
+    return list
+  }, [])
+
+  const unreadCount = useMemo(
+    () => notifications.filter((n) => !readNotificationIds.has(n.id)).length,
+    [notifications, readNotificationIds]
+  )
+
+  const markNotificationRead = useCallback((id: string) => {
+    setReadNotificationIds((prev) => {
+      if (prev.has(id)) return prev
+      const next = new Set(prev)
+      next.add(id)
+      saveReadIds(next)
+      return next
+    })
+  }, [])
+
+  const markAllNotificationsRead = useCallback(() => {
+    setReadNotificationIds(() => {
+      const next = new Set(notifications.map((n) => n.id))
+      saveReadIds(next)
+      return next
+    })
+  }, [notifications])
 
   const shortAddress = address
     ? `${address.slice(0, 4)}…${address.slice(-4)}`
@@ -124,7 +221,11 @@ export function Header() {
         onContinue={handleNameContinue}
       />
       <div className="flex items-center justify-between px-6 py-4">
-        <div className="flex items-center gap-3">
+        <Link
+          href="/"
+          className="flex items-center gap-3 rounded-lg outline-none ring-offset-background transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label="Nest home"
+        >
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
             <Bird className="h-5 w-5 text-primary-foreground" />
           </div>
@@ -137,7 +238,7 @@ export function Header() {
               Testnet
             </Badge>
           )}
-        </div>
+        </Link>
 
         <div className="flex items-center gap-4">
           {connected ? (
@@ -167,12 +268,98 @@ export function Header() {
               {isConnecting ? "Connecting…" : "Connect wallet"}
             </Button>
           )}
-          <Button variant="ghost" size="icon" className="relative">
-            <Bell className="h-5 w-5 text-muted-foreground" />
-            <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-accent text-[10px] font-medium text-accent-foreground">
-              3
-            </span>
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="relative"
+                aria-label="Notifications"
+              >
+                <Bell className="h-5 w-5 text-muted-foreground" />
+                {unreadCount > 0 ? (
+                  <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-0.5 text-[10px] font-medium text-accent-foreground">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
+                ) : null}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-80">
+              <DropdownMenuLabel className="flex items-center justify-between gap-2 font-semibold">
+                <span>Notifications</span>
+                {unreadCount > 0 ? (
+                  <button
+                    type="button"
+                    className="text-xs font-normal text-primary hover:underline"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      markAllNotificationsRead()
+                    }}
+                  >
+                    Mark all read
+                  </button>
+                ) : null}
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <div className="max-h-72 overflow-y-auto py-1">
+                {notifications.map((n) => {
+                  const isRead = readNotificationIds.has(n.id)
+                  const content = (
+                    <>
+                      <div className="flex items-start gap-2">
+                        {!isRead ? (
+                          <span
+                            className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary"
+                            aria-hidden
+                          />
+                        ) : (
+                          <span className="mt-1.5 h-1.5 w-1.5 shrink-0" />
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium leading-tight">
+                            {n.title}
+                          </p>
+                          <p className="mt-0.5 text-xs text-muted-foreground leading-snug">
+                            {n.body}
+                          </p>
+                        </div>
+                      </div>
+                    </>
+                  )
+                  if (n.href) {
+                    return (
+                      <DropdownMenuItem
+                        key={n.id}
+                        className="cursor-pointer items-start px-3 py-2.5"
+                        asChild
+                      >
+                        <Link
+                          href={n.href}
+                          onClick={() => markNotificationRead(n.id)}
+                        >
+                          {content}
+                        </Link>
+                      </DropdownMenuItem>
+                    )
+                  }
+                  return (
+                    <DropdownMenuItem
+                      key={n.id}
+                      className="cursor-pointer items-start px-3 py-2.5"
+                      onSelect={() => markNotificationRead(n.id)}
+                    >
+                      {content}
+                    </DropdownMenuItem>
+                  )
+                })}
+              </div>
+              {notifications.length === 0 ? (
+                <p className="px-2 py-3 text-center text-sm text-muted-foreground">
+                  No notifications
+                </p>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button
             variant="ghost"
             size="icon"
