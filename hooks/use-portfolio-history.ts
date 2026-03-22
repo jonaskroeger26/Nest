@@ -53,11 +53,32 @@ function trimAge(points: PortfolioSnapshot[], now: number) {
 
 export type PortfolioRange = "1d" | "7d" | "30d" | "all"
 
-const RANGE_MS: Record<PortfolioRange, number> = {
+/** Exported for charts so X-axis matches the selected range (Binance-style viewport). */
+export const PORTFOLIO_RANGE_MS: Record<PortfolioRange, number> = {
   "1d": 24 * 60 * 60 * 1000,
   "7d": 7 * 24 * 60 * 60 * 1000,
   "30d": 30 * 24 * 60 * 60 * 1000,
   all: MAX_AGE_MS,
+}
+
+export { MAX_AGE_MS as PORTFOLIO_MAX_HISTORY_MS }
+
+const RANGE_MS = PORTFOLIO_RANGE_MS
+
+/** Visible time window: fixed length for 1D/7D/30D; “all” = first snapshot → now. */
+export function getPortfolioViewport(
+  range: PortfolioRange,
+  history: PortfolioSnapshot[],
+  now: number
+): { start: number; end: number } {
+  const end = now
+  if (range === "all") {
+    if (history.length === 0) {
+      return { start: now - RANGE_MS["1d"], end }
+    }
+    return { start: history[0]!.t, end }
+  }
+  return { start: now - RANGE_MS[range], end }
 }
 
 /**

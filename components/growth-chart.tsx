@@ -8,7 +8,9 @@ import { useSolPrice, solToUsdFormatted } from "@/hooks/use-sol-price"
 import {
   usePortfolioHistory,
   formatPctChange,
+  getPortfolioViewport,
   type PortfolioRange,
+  type PortfolioSnapshot,
 } from "@/hooks/use-portfolio-history"
 import {
   Area,
@@ -111,15 +113,22 @@ function formatAxisTick(ts: number, minT: number, maxT: number) {
   })
 }
 
-/** Evenly spaced ticks so first/last labels aren’t collapsed to one day string. */
-function buildXTicks(timestamps: number[], maxTicks = 6): number[] {
-  if (timestamps.length === 0) return []
-  const sorted = [...timestamps].sort((a, b) => a - b)
-  const min = sorted[0]!
-  const max = sorted[sorted.length - 1]!
-  if (max <= min) return [min]
-  const n = Math.min(maxTicks, 6)
-  return Array.from({ length: n }, (_, i) => min + ((max - min) * i) / (n - 1))
+/** Ticks across the full selected range (not just where data exists). */
+function buildXTicksFromDomain(minT: number, maxT: number, count = 6): number[] {
+  if (maxT <= minT) return [minT]
+  const n = Math.max(2, count)
+  return Array.from({ length: n }, (_, i) => minT + ((maxT - minT) * i) / (n - 1))
+}
+
+function snapshotAtOrBefore(
+  history: PortfolioSnapshot[],
+  tMax: number
+): PortfolioSnapshot | null {
+  let best: PortfolioSnapshot | null = null
+  for (const p of history) {
+    if (p.t <= tMax && (!best || p.t > best.t)) best = p
+  }
+  return best
 }
 
 function formatTooltipUsd(n: number) {
@@ -148,8 +157,8 @@ export function GrowthChart({
 
   const {
     hydrated,
+    history,
     currentUsd,
-    filterByRange,
     pctChangeInRange,
     stats,
   } = usePortfolioHistory(totalSol, usd)
@@ -160,49 +169,96 @@ export function GrowthChart({
   const stroke = up ? "#16a34a" : "#dc2626"
   const fillId = `nest-port-${chartUid}-${up ? "u" : "d"}`
 
-  const chartData = useMemo(() => {
-    const slice = filterByRange(range)
-    const mapped = slice.map((s) => ({
+  /** Points in view + anchors so the X-axis always matches the selected range. */
+  const { chartData, viewStart, viewEnd } = useMemo(() => {
+    const now = Date.now()
+    const { start: windowStart, end: windowEnd } = getPortfolioViewport(
+      range,
+      history,
+      now
+    )
+
+    if (!hydrated || currentUsd == null) {
+      return {
+        chartData: [] as { t: number; usd: number; sol: number }[],
+        viewStart: windowStart,
+        viewEnd: windowEnd,
+      }
+    }
+
+    const inView = history.filter(
+      (s) => s.t >= windowStart && s.t <= windowEnd
+    )
+    const mapped = inView.map((s) => ({
       t: s.t,
       usd: s.usd,
       sol: s.sol,
     }))
-    if (mapped.length === 0 && currentUsd != null && hydrated) {
-      const now = Date.now()
-      return [
-        { t: now - 86_400_000, usd: currentUsd, sol: totalSol },
-        { t: now, usd: currentUsd, sol: totalSol },
-      ]
-    }
-    if (mapped.length === 1) {
-      const p = mapped[0]!
-      return [
-        { t: p.t - 120_000, usd: p.usd, sol: p.sol },
-        p,
-      ]
-    }
-    return mapped
-  }, [filterByRange, range, currentUsd, hydrated, totalSol])
 
-  const chartAxis = useMemo(() => {
-    const ts = chartData.map((d) => d.t)
-    if (ts.length === 0) {
+    // No samples in this window: flat line across full viewport
+    if (mapped.length === 0) {
       return {
-        minT: 0,
-        maxT: 0,
-        ticks: [] as number[],
-        formatTick: (_v: number) => "",
+        chartData: [
+          { t: windowStart, usd: currentUsd, sol: totalSol },
+          { t: windowEnd, usd: currentUsd, sol: totalSol },
+        ],
+        viewStart: windowStart,
+        viewEnd: windowEnd,
       }
     }
-    const minT = Math.min(...ts)
-    const maxT = Math.max(...ts)
+
+    const atLeft = snapshotAtOrBefore(history, windowStart)
+    const anchorUsd = atLeft?.usd ?? mapped[0]!.usd
+    const anchorSol = atLeft?.sol ?? mapped[0]!.sol
+
+    const series: { t: number; usd: number; sol: number }[] = []
+
+    // Lead-in from viewport left edge (CMC-style) when first sample is after window start
+    if (mapped[0]!.t > windowStart + 60_000) {
+      series.push({ t: windowStart, usd: anchorUsd, sol: anchorSol })
+    }
+
+    for (const p of mapped) {
+      const prev = series[series.length - 1]
+      if (prev && prev.t === p.t) continue
+      series.push(p)
+    }
+
+    const last = series[series.length - 1]!
+    // Extend to “now” on the right edge of the viewport (live portfolio value).
+    if (last.t < windowEnd - 1000) {
+      series.push({
+        t: windowEnd,
+        usd: currentUsd,
+        sol: totalSol,
+      })
+    }
+
+    return {
+      chartData: series,
+      viewStart: windowStart,
+      viewEnd: windowEnd,
+    }
+  }, [range, history, hydrated, currentUsd, totalSol])
+
+  const chartAxis = useMemo(() => {
+    const minT = viewStart
+    const maxT = viewEnd
+    if (maxT <= minT) {
+      return {
+        minT,
+        maxT,
+        ticks: [minT] as number[],
+        formatTick: (v: number) => formatAxisTick(v, minT, maxT),
+      }
+    }
     return {
       minT,
       maxT,
-      ticks: buildXTicks(ts),
+      ticks: buildXTicksFromDomain(minT, maxT),
       formatTick: (v: number) => formatAxisTick(v, minT, maxT),
     }
-  }, [chartData])
+  }, [viewStart, viewEnd])
 
   if (children.length === 0) {
     return (
