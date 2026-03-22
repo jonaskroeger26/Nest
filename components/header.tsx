@@ -2,11 +2,24 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import Link from "next/link"
-import { Bird, Bell, Copy, ExternalLink, Settings, Wallet } from "lucide-react"
+import {
+  Bird,
+  Bell,
+  Copy,
+  ExternalLink,
+  LogOut,
+  Settings,
+  Wallet,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useWallet } from "@/hooks/use-wallet"
 import { useUser } from "@/context/user-context"
+import {
+  NEST_AVATAR_STYLES,
+  nestAvatarImageUrl,
+  type NestAvatarStyleId,
+} from "@/lib/nest-avatar"
 import { ConnectNameDialog } from "@/components/dialogs/connect-name-dialog"
 import {
   getKidsVaultProgramId,
@@ -102,9 +115,12 @@ async function copyToClipboard(text: string, label: string) {
 
 export function Header() {
   const { address, isConnecting, connect, disconnect, connected } = useWallet()
-  const { userName, setUserName } = useUser()
+  const { userName, setUserName, userAvatar, setUserAvatar } = useUser()
   const [showConnectName, setShowConnectName] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [draftAvatarStyle, setDraftAvatarStyle] =
+    useState<NestAvatarStyleId>("lorelei")
+  const [draftAvatarSeed, setDraftAvatarSeed] = useState("")
   const [savingNameOnChain, setSavingNameOnChain] = useState(false)
   const [readNotificationIds, setReadNotificationIds] = useState<Set<string>>(
     () => new Set()
@@ -205,6 +221,37 @@ export function Header() {
     }
   }
 
+  const openSettings = useCallback(() => {
+    setDraftAvatarStyle(userAvatar?.style ?? "lorelei")
+    setDraftAvatarSeed(
+      userAvatar?.seed ?? address ?? userName ?? ""
+    )
+    setShowSettings(true)
+  }, [userAvatar, address, userName])
+
+  const saveAppearance = useCallback(() => {
+    const seed =
+      draftAvatarSeed.trim() || address || userName || "nest"
+    setUserAvatar({
+      style: draftAvatarStyle,
+      seed: seed.slice(0, 80),
+    })
+    toast.success("Avatar updated")
+  }, [
+    draftAvatarSeed,
+    draftAvatarStyle,
+    address,
+    userName,
+    setUserAvatar,
+  ])
+
+  const resetAppearance = useCallback(() => {
+    setUserAvatar(null)
+    setDraftAvatarStyle("lorelei")
+    setDraftAvatarSeed(address ?? userName ?? "")
+    toast.success("Avatar reset to default")
+  }, [address, userName, setUserAvatar])
+
   const saveSettingsNameOnChain = async () => {
     const n = userName?.trim()
     if (!address || !n) {
@@ -294,7 +341,7 @@ export function Header() {
               <Wallet className="h-4 w-4" />
               {isConnecting ? "Connecting…" : "Connect wallet"}
             </Button>
-          )}
+          ) : null}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -387,14 +434,6 @@ export function Header() {
               ) : null}
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setShowSettings(true)}
-            aria-label="Settings"
-          >
-            <Settings className="h-5 w-5 text-muted-foreground" />
-          </Button>
           <Dialog open={showSettings} onOpenChange={setShowSettings}>
             <DialogContent className="sm:max-w-lg max-h-[min(85vh,640px)] overflow-y-auto">
               <DialogHeader>
@@ -423,6 +462,105 @@ export function Header() {
                   >
                     {savingNameOnChain ? "Signing…" : "Save name on-chain"}
                   </Button>
+                </section>
+
+                <Separator />
+
+                <section className="space-y-3">
+                  <h3 className="text-sm font-semibold text-foreground">
+                    Profile picture
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Avatars are generated in your browser (Dicebear). Pick a style
+                    and a short phrase — same combo always gives the same face.
+                  </p>
+                  <div className="flex justify-center">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={nestAvatarImageUrl(
+                        {
+                          style: draftAvatarStyle,
+                          seed:
+                            draftAvatarSeed.trim() ||
+                            address ||
+                            userName ||
+                            "nest",
+                        },
+                        address ?? userName ?? "nest"
+                      )}
+                      alt=""
+                      className="h-24 w-24 rounded-full border border-border bg-muted/40"
+                      width={96}
+                      height={96}
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+                    {NEST_AVATAR_STYLES.map((s) => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        title={s.label}
+                        onClick={() => setDraftAvatarStyle(s.id)}
+                        className={
+                          "flex flex-col items-center gap-1 rounded-lg border p-1.5 text-[10px] transition-colors " +
+                          (draftAvatarStyle === s.id
+                            ? "border-primary bg-primary/10"
+                            : "border-border hover:bg-muted/60")
+                        }
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={nestAvatarImageUrl(
+                            {
+                              style: s.id,
+                              seed:
+                                draftAvatarSeed.trim() ||
+                                address ||
+                                userName ||
+                                "nest",
+                            },
+                            address ?? userName ?? "nest"
+                          )}
+                          alt=""
+                          className="h-10 w-10 rounded-full"
+                          width={40}
+                          height={40}
+                        />
+                        <span className="line-clamp-1 text-center">{s.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="settings-avatar-seed">Avatar phrase</Label>
+                    <Input
+                      id="settings-avatar-seed"
+                      value={draftAvatarSeed}
+                      onChange={(e) => setDraftAvatarSeed(e.target.value)}
+                      placeholder={
+                        address
+                          ? "Leave empty to use wallet address"
+                          : "e.g. sunny-koala"
+                      }
+                    />
+                  </div>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Button
+                      type="button"
+                      className="flex-1"
+                      variant="default"
+                      onClick={saveAppearance}
+                    >
+                      Save avatar
+                    </Button>
+                    <Button
+                      type="button"
+                      className="flex-1"
+                      variant="outline"
+                      onClick={resetAppearance}
+                    >
+                      Reset default
+                    </Button>
+                  </div>
                 </section>
 
                 <Separator />
@@ -544,10 +682,60 @@ export function Header() {
               </div>
             </DialogContent>
           </Dialog>
-          <Avatar className="h-9 w-9 ring-2 ring-primary/20">
-            <AvatarImage src={`https://api.dicebear.com/7.x/lorelei/svg?seed=${address ?? userName ?? "user"}`} alt="User" />
-            <AvatarFallback>{(userName ?? shortAddress ?? "?").slice(0, 2).toUpperCase()}</AvatarFallback>
-          </Avatar>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="rounded-full outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                aria-label="Profile menu"
+              >
+                <Avatar className="h-9 w-9 ring-2 ring-primary/20">
+                  <AvatarImage
+                    src={nestAvatarImageUrl(
+                      userAvatar,
+                      address ?? userName ?? "nest"
+                    )}
+                    alt=""
+                  />
+                  <AvatarFallback>
+                    {(userName ?? shortAddress ?? "?").slice(0, 2).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel className="font-normal">
+                <p className="truncate text-sm font-medium text-foreground">
+                  {userName?.trim() || "Parent"}
+                </p>
+                {shortAddress ? (
+                  <p className="truncate text-xs text-muted-foreground">
+                    {shortAddress}
+                  </p>
+                ) : null}
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="cursor-pointer gap-2"
+                onSelect={() => openSettings()}
+              >
+                <Settings className="h-4 w-4" />
+                Settings
+              </DropdownMenuItem>
+              {connected ? (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="cursor-pointer gap-2 text-destructive focus:text-destructive"
+                    onSelect={() => disconnect()}
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Disconnect
+                  </DropdownMenuItem>
+                </>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
     </header>
