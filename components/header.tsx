@@ -315,22 +315,7 @@ export function Header() {
         </Link>
 
         <div className="flex items-center gap-4">
-          {connected ? (
-            <>
-              <span className="max-w-[140px] truncate text-sm font-medium text-primary">
-                {shortAddress}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={disconnect}
-                className="gap-2"
-              >
-                <Wallet className="h-4 w-4" />
-                Disconnect
-              </Button>
-            </>
-          ) : (
+          {!connected ? (
             <Button
               variant="default"
               size="sm"
