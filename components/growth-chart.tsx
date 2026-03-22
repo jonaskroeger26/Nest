@@ -57,15 +57,69 @@ function goalSubtitle(c: Child): string {
   return short || "Goal"
 }
 
-function formatAxisTime(ts: number, range: PortfolioRange) {
+/**
+ * Label X-axis from actual data span (not the range button). If everything
+ * landed on one calendar day, still show clock time so ticks aren’t all “Mar 22”.
+ */
+function formatAxisTick(ts: number, minT: number, maxT: number) {
+  const span = Math.max(0, maxT - minT)
   const d = new Date(ts)
-  if (range === "1d") {
-    return d.toLocaleTimeString(undefined, {
-      hour: "numeric",
-      minute: "2-digit",
+  const startDay = new Date(minT).toDateString()
+  const endDay = new Date(maxT).toDateString()
+  const sameCalendarDay = startDay === endDay
+
+  const withDateAndTime: Intl.DateTimeFormatOptions = {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }
+  const timeOnly: Intl.DateTimeFormatOptions = {
+    hour: "numeric",
+    minute: "2-digit",
+  }
+
+  if (span <= 0) {
+    return d.toLocaleString(undefined, withDateAndTime)
+  }
+
+  // Intraday or all samples same day → always show time (and date if multi-day span is tiny)
+  if (span <= 48 * 60 * 60 * 1000 || sameCalendarDay) {
+    if (sameCalendarDay && span <= 48 * 60 * 60 * 1000) {
+      return d.toLocaleTimeString(undefined, timeOnly)
+    }
+    return d.toLocaleString(undefined, withDateAndTime)
+  }
+
+  if (span <= 14 * 24 * 60 * 60 * 1000) {
+    return d.toLocaleString(undefined, {
+      weekday: "short",
+      ...withDateAndTime,
     })
   }
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+
+  if (span <= 180 * 24 * 60 * 60 * 1000) {
+    return d.toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+    })
+  }
+
+  return d.toLocaleDateString(undefined, {
+    month: "short",
+    year: "2-digit",
+  })
+}
+
+/** Evenly spaced ticks so first/last labels aren’t collapsed to one day string. */
+function buildXTicks(timestamps: number[], maxTicks = 6): number[] {
+  if (timestamps.length === 0) return []
+  const sorted = [...timestamps].sort((a, b) => a - b)
+  const min = sorted[0]!
+  const max = sorted[sorted.length - 1]!
+  if (max <= min) return [min]
+  const n = Math.min(maxTicks, 6)
+  return Array.from({ length: n }, (_, i) => min + ((max - min) * i) / (n - 1))
 }
 
 function formatTooltipUsd(n: number) {
@@ -129,6 +183,26 @@ export function GrowthChart({
     }
     return mapped
   }, [filterByRange, range, currentUsd, hydrated, totalSol])
+
+  const chartAxis = useMemo(() => {
+    const ts = chartData.map((d) => d.t)
+    if (ts.length === 0) {
+      return {
+        minT: 0,
+        maxT: 0,
+        ticks: [] as number[],
+        formatTick: (_v: number) => "",
+      }
+    }
+    const minT = Math.min(...ts)
+    const maxT = Math.max(...ts)
+    return {
+      minT,
+      maxT,
+      ticks: buildXTicks(ts),
+      formatTick: (v: number) => formatAxisTick(v, minT, maxT),
+    }
+  }, [chartData])
 
   if (children.length === 0) {
     return (
@@ -249,12 +323,13 @@ export function GrowthChart({
                   <XAxis
                     dataKey="t"
                     type="number"
-                    domain={["dataMin", "dataMax"]}
-                    tickFormatter={(ts) => formatAxisTime(ts as number, range)}
+                    domain={[chartAxis.minT, chartAxis.maxT]}
+                    ticks={chartAxis.ticks}
+                    tickFormatter={(ts) => chartAxis.formatTick(ts as number)}
                     axisLine={false}
                     tickLine={false}
                     tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
-                    minTickGap={28}
+                    padding={{ left: 4, right: 4 }}
                   />
                   <YAxis
                     domain={["auto", "auto"]}
