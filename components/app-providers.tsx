@@ -3,7 +3,6 @@
 import { useEffect, useState, useRef } from "react"
 import { PublicKey } from "@solana/web3.js"
 import { Toaster } from "sonner"
-import { useRouter, usePathname } from "next/navigation"
 import { UserProvider, useUser } from "@/context/user-context"
 import { ChildrenProvider, useChildren } from "@/context/children-context"
 import { VaultBalancesProvider } from "@/context/vault-balances-context"
@@ -49,20 +48,6 @@ function attachStoredGoals(
       })),
     }
   })
-}
-
-function RedirectOnConnect() {
-  const { connected } = useWallet()
-  const router = useRouter()
-  const pathname = usePathname()
-
-  useEffect(() => {
-    if (connected && pathname === "/") {
-      router.push("/app")
-    }
-  }, [connected, pathname, router])
-
-  return null
 }
 
 /**
@@ -213,7 +198,6 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
             <ProfileReloadProvider>
               <ProfileGate>
                 <ActionsProvider>
-                  <RedirectOnConnect />
                   {children}
                   <DialogRenderer />
                   <Toaster position="bottom-center" richColors />
