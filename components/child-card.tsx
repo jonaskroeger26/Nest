@@ -120,6 +120,28 @@ export function ChildCard({
               value={(goal.current / goal.target) * 100}
               className="h-2"
             />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-3 w-full gap-1.5"
+              disabled={!beneficiaryAddress}
+              title={
+                beneficiaryAddress
+                  ? undefined
+                  : "Register this child on-chain with a wallet first"
+              }
+              onClick={() =>
+                beneficiaryAddress &&
+                openAddSolForChild(
+                  beneficiaryAddress,
+                  goal.id ? { goalId: goal.id } : { goalIndex: index }
+                )
+              }
+            >
+              <Lock className="h-3.5 w-3.5" />
+              Lock SOL for this goal
+            </Button>
           </div>
         ))}
         <Button

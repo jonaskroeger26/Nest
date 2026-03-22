@@ -11,13 +11,21 @@ type DialogType =
   | "addGoal"
   | null
 
+/** Pre-select a goal in Add SOL (by id, or list index if no id yet). */
+export type LockGoalRef = { goalId?: string; goalIndex?: number }
+
 type ActionsContextType = {
   dialog: DialogType
   addGoalChildName: string | null
   /** Pre-select child in Add SOL by registered wallet (from child card) */
   lockForChildBeneficiary: string | null
+  /** Pre-select goal row when opening Add SOL from a goal */
+  lockGoalRef: LockGoalRef | null
   openAddSol: () => void
-  openAddSolForChild: (childBeneficiaryAddress: string) => void
+  openAddSolForChild: (
+    childBeneficiaryAddress: string,
+    goal?: LockGoalRef | null
+  ) => void
   openNewChild: () => void
   openWithdraw: () => void
   openAutoSave: () => void
@@ -34,15 +42,21 @@ export function ActionsProvider({ children }: { children: React.ReactNode }) {
   const [lockForChildBeneficiary, setLockForChildBeneficiary] = useState<
     string | null
   >(null)
+  const [lockGoalRef, setLockGoalRef] = useState<LockGoalRef | null>(null)
 
   const openAddSol = useCallback(() => {
     setLockForChildBeneficiary(null)
+    setLockGoalRef(null)
     setDialog("addSol")
   }, [])
-  const openAddSolForChild = useCallback((childBeneficiaryAddress: string) => {
-    setLockForChildBeneficiary(childBeneficiaryAddress.trim())
-    setDialog("addSol")
-  }, [])
+  const openAddSolForChild = useCallback(
+    (childBeneficiaryAddress: string, goal?: LockGoalRef | null) => {
+      setLockForChildBeneficiary(childBeneficiaryAddress.trim())
+      setLockGoalRef(goal && (goal.goalId || goal.goalIndex != null) ? goal : null)
+      setDialog("addSol")
+    },
+    []
+  )
   const openNewChild = useCallback(() => setDialog("newChild"), [])
   const openWithdraw = useCallback(() => setDialog("withdraw"), [])
   const openAutoSave = useCallback(() => setDialog("autoSave"), [])
@@ -55,6 +69,7 @@ export function ActionsProvider({ children }: { children: React.ReactNode }) {
     setDialog(null)
     setAddGoalChildName(null)
     setLockForChildBeneficiary(null)
+    setLockGoalRef(null)
   }, [])
 
   return (
@@ -63,6 +78,7 @@ export function ActionsProvider({ children }: { children: React.ReactNode }) {
         dialog,
         addGoalChildName,
         lockForChildBeneficiary,
+        lockGoalRef,
         openAddSol,
         openAddSolForChild,
         openNewChild,

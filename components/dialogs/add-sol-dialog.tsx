@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import {
   Dialog,
   DialogContent,
@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useWallet } from "@/hooks/use-wallet"
-import { useChildren } from "@/context/children-context"
+import { useChildren, type Child, type Goal } from "@/context/children-context"
 import { useActions } from "@/context/actions-context"
 import { useMarinadeApy } from "@/hooks/use-marinade-apy"
 import { getConnection, createSolVault, createMsolVault } from "@/lib/solana-vault"
@@ -21,8 +21,64 @@ import { signTransactionWithBrowserWallet } from "@/lib/wallet-sign"
 import { solanaTxUrl } from "@/lib/solana-explorer"
 import { isMainnetVaults } from "@/lib/solana-config"
 import { useVaultBalances } from "@/context/vault-balances-context"
+import { useSolPrice } from "@/hooks/use-sol-price"
 import { PublicKey } from "@solana/web3.js"
 import { toast } from "sonner"
+import {
+  formatGoalUnlockDisplay,
+  parseGoalUnlockDate,
+} from "@/lib/goal-dates"
+
+function goalKeyFromLockRef(ref: {
+  goalId?: string
+  goalIndex?: number
+} | null): string {
+  if (!ref) return ""
+  if (ref.goalId) return `id:${ref.goalId}`
+  if (ref.goalIndex != null && ref.goalIndex >= 0) return `idx:${ref.goalIndex}`
+  return ""
+}
+
+function resolveGoalFromKey(child: Child, key: string): Goal | null {
+  if (!key) return null
+  if (key.startsWith("id:")) {
+    const id = key.slice(3)
+    return child.goals.find((g) => g.id === id) ?? null
+  }
+  if (key.startsWith("idx:")) {
+    const i = parseInt(key.slice(4), 10)
+    if (Number.isNaN(i) || i < 0 || i >= child.goals.length) return null
+    return child.goals[i] ?? null
+  }
+  return null
+}
+
+function keyToCreditRef(key: string): { id?: string; index?: number } {
+  if (key.startsWith("id:")) return { id: key.slice(3) }
+  if (key.startsWith("idx:")) {
+    const index = parseInt(key.slice(4), 10)
+    if (Number.isNaN(index)) return {}
+    return { index }
+  }
+  return {}
+}
+
+/** `datetime-local` value for noon on the goal’s unlock calendar day (local). */
+function goalUnlockToDatetimeLocal(unlockDate: string): string {
+  const d = parseGoalUnlockDate(unlockDate)
+  if (!d) return ""
+  const local = new Date(
+    d.getFullYear(),
+    d.getMonth(),
+    d.getDate(),
+    12,
+    0,
+    0,
+    0
+  )
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${local.getFullYear()}-${pad(local.getMonth() + 1)}-${pad(local.getDate())}T${pad(local.getHours())}:${pad(local.getMinutes())}`
+}
 
 export function AddSolDialog({
   open,
@@ -32,22 +88,37 @@ export function AddSolDialog({
   onClose: () => void
 }) {
   const { address, connect } = useWallet()
-  const { children, updateChildTotal } = useChildren()
-  const { lockForChildBeneficiary } = useActions()
+  const { children, updateChildTotal, creditGoalLock } = useChildren()
+  const { lockForChildBeneficiary, lockGoalRef } = useActions()
   const { refresh: refreshVaults } = useVaultBalances()
+  const { usdPerSol } = useSolPrice()
   const marinadeApy = useMarinadeApy()
   const [selectedIdx, setSelectedIdx] = useState<number | "">("")
+  const [selectedGoalKey, setSelectedGoalKey] = useState("")
   const [amount, setAmount] = useState("")
   const [unlockDate, setUnlockDate] = useState("")
   const [lockAsMsol, setLockAsMsol] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
 
+  const selected = useMemo(() => {
+    if (typeof selectedIdx !== "number" || selectedIdx < 0) return null
+    return children[selectedIdx] ?? null
+  }, [children, selectedIdx])
+
+  const beneficiary = selected?.beneficiaryAddress?.trim() ?? ""
+
+  const selectedGoal = useMemo(() => {
+    if (!selected || !selectedGoalKey) return null
+    return resolveGoalFromKey(selected, selectedGoalKey)
+  }, [selected, selectedGoalKey])
+
   useEffect(() => {
     if (!open) return
     setError("")
     setAmount("")
     setUnlockDate("")
+    setSelectedGoalKey(goalKeyFromLockRef(lockGoalRef))
     if (lockForChildBeneficiary) {
       const idx = children.findIndex(
         (x) =>
@@ -57,7 +128,7 @@ export function AddSolDialog({
     } else {
       setSelectedIdx("")
     }
-  }, [open, lockForChildBeneficiary, children])
+  }, [open, lockForChildBeneficiary, lockGoalRef, children])
 
   useEffect(() => {
     if (!open || !lockForChildBeneficiary || children.length === 0) return
@@ -67,12 +138,20 @@ export function AddSolDialog({
     if (idx >= 0) setSelectedIdx(idx)
   }, [open, lockForChildBeneficiary, children])
 
-  const selected =
-    typeof selectedIdx === "number" && selectedIdx >= 0
-      ? children[selectedIdx]
-      : null
-  const childName = selected?.name ?? ""
-  const beneficiary = selected?.beneficiaryAddress?.trim() ?? ""
+  // If the chosen goal doesn’t exist on this child anymore, clear it.
+  useEffect(() => {
+    if (!selected || selectedGoalKey === "") return
+    if (!resolveGoalFromKey(selected, selectedGoalKey)) {
+      setSelectedGoalKey("")
+    }
+  }, [selected, selectedGoalKey])
+
+  // Fill unlock from goal when a goal is selected.
+  useEffect(() => {
+    if (!selectedGoal) return
+    const local = goalUnlockToDatetimeLocal(selectedGoal.unlockDate)
+    if (local) setUnlockDate(local)
+  }, [selectedGoal])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -86,7 +165,9 @@ export function AddSolDialog({
       return
     }
     const amountNum = parseFloat(amount)
-    const unlockTs = unlockDate ? Math.floor(new Date(unlockDate).getTime() / 1000) : 0
+    const unlockTs = unlockDate
+      ? Math.floor(new Date(unlockDate).getTime() / 1000)
+      : 0
     const benStr = selected.beneficiaryAddress.trim()
     if (!amountNum || amountNum <= 0) {
       setError("Enter a valid amount.")
@@ -107,6 +188,7 @@ export function AddSolDialog({
     try {
       const connection = await getConnection()
       const creatorPubkey = new PublicKey(address)
+      const goalLabel = selectedGoal ? ` · ${selectedGoal.name}` : ""
       if (lockAsMsol) {
         const { depositSig, lockSig } = await createMsolVault(
           connection,
@@ -118,7 +200,8 @@ export function AddSolDialog({
         )
         toast.success(
           <span>
-            mSOL locked for <strong>{selected.name}</strong>.{" "}
+            mSOL locked for <strong>{selected.name}</strong>
+            {goalLabel}.{" "}
             <a
               href={solanaTxUrl(depositSig)}
               className="underline"
@@ -149,7 +232,8 @@ export function AddSolDialog({
         )
         toast.success(
           <span>
-            SOL locked for <strong>{selected.name}</strong>.{" "}
+            SOL locked for <strong>{selected.name}</strong>
+            {goalLabel}.{" "}
             <a
               href={solanaTxUrl(sig)}
               className="underline"
@@ -162,6 +246,16 @@ export function AddSolDialog({
         )
       }
       updateChildTotal(selected.name, amountNum)
+      const ref = keyToCreditRef(selectedGoalKey)
+      const refOk = ref.id != null || ref.index != null
+      if (selectedGoalKey && refOk && usdPerSol != null) {
+        const usd = amountNum * usdPerSol
+        creditGoalLock(selected.name, ref, usd)
+      } else if (selectedGoalKey && refOk && usdPerSol == null) {
+        toast.message(
+          "Goal progress in USD will update once the SOL price loads — refresh if needed."
+        )
+      }
       await refreshVaults()
       onClose()
     } catch (err) {
@@ -178,8 +272,12 @@ export function AddSolDialog({
           <DialogTitle>Lock SOL for a child</DialogTitle>
           <DialogDescription className="space-y-1">
             <span className="block">
-              Choose the child — the lock is bound to <strong>their</strong> on-chain vault
-              (their wallet). Each lock appears under that child&apos;s card.
+              Pick a child, then optionally a <strong>goal</strong> so the unlock
+              time matches that goal and savings progress updates in USD.
+            </span>
+            <span className="block">
+              The lock is still bound to <strong>their</strong> on-chain vault
+              (their wallet).
             </span>
             {!lockAsMsol && isMainnetVaults() && (
               <span className="block">
@@ -204,6 +302,8 @@ export function AddSolDialog({
               onChange={(e) => {
                 const v = e.target.value
                 setSelectedIdx(v === "" ? "" : parseInt(v, 10))
+                setSelectedGoalKey("")
+                setUnlockDate("")
               }}
             >
               <option value="">Select child</option>
@@ -215,11 +315,39 @@ export function AddSolDialog({
               ))}
             </select>
           </div>
+          {selected && selected.goals.length > 0 ? (
+            <div className="space-y-2">
+              <Label>Goal</Label>
+              <select
+                className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
+                value={selectedGoalKey}
+                onChange={(e) => {
+                  const v = e.target.value
+                  setSelectedGoalKey(v)
+                  if (v === "") setUnlockDate("")
+                }}
+              >
+                <option value="">Custom — set unlock date manually</option>
+                {selected.goals.map((g, i) => (
+                  <option
+                    key={g.id ?? `${g.name}-${i}`}
+                    value={g.id ? `id:${g.id}` : `idx:${i}`}
+                  >
+                    {g.name} · unlock {formatGoalUnlockDisplay(g.unlockDate)}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-muted-foreground">
+                Choosing a goal fills the unlock time from that goal and credits
+                its progress bar using SOL × current price after the tx succeeds.
+              </p>
+            </div>
+          ) : null}
           <div className="space-y-2">
             <Label>Child&apos;s vault wallet (bound)</Label>
             <Input
               readOnly
-              className="font-mono text-xs bg-muted/50"
+              className="bg-muted/50 font-mono text-xs"
               placeholder="Select a child above"
               value={beneficiary}
             />

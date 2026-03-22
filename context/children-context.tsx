@@ -36,11 +36,20 @@ function newGoalId() {
   return `g-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
 }
 
+/** Match goal by stable id or list index (legacy goals without id). */
+export type GoalCreditRef = { id?: string; index?: number }
+
 type ChildrenContextType = {
   children: Child[]
   addChild: (child: Omit<Child, "goals" | "totalSaved"> & { goals?: Goal[] }) => void
   addGoal: (childName: string, goal: Goal) => void
   updateChildTotal: (childName: string, addAmount: number) => void
+  /** Add USD progress to a goal after an on-chain lock (uses SOL × price). */
+  creditGoalLock: (
+    childName: string,
+    ref: GoalCreditRef,
+    amountUsd: number
+  ) => void
   setChildren: (items: Child[]) => void
   resetChildren: () => void
 }
@@ -85,6 +94,34 @@ export function ChildrenProvider({ children: kids }: { children: React.ReactNode
     )
   }, [])
 
+  const creditGoalLock = useCallback(
+    (childName: string, ref: GoalCreditRef, amountUsd: number) => {
+      if (!Number.isFinite(amountUsd) || amountUsd <= 0) return
+      const hasRef =
+        (ref.id != null && ref.id !== "") || ref.index != null
+      if (!hasRef) return
+      setChildren((prev) =>
+        prev.map((c) => {
+          if (c.name !== childName) return c
+          return {
+            ...c,
+            goals: c.goals.map((g, i) => {
+              const byId = ref.id != null && ref.id !== "" && g.id === ref.id
+              const byIdx = ref.index != null && ref.index === i
+              if (!byId && !byIdx) return g
+              return {
+                ...g,
+                id: g.id ?? newGoalId(),
+                current: g.current + amountUsd,
+              }
+            }),
+          }
+        })
+      )
+    },
+    []
+  )
+
   const setChildrenDirect = useCallback((items: Child[]) => {
     setChildren(items)
   }, [])
@@ -120,6 +157,7 @@ export function ChildrenProvider({ children: kids }: { children: React.ReactNode
         addChild,
         addGoal,
         updateChildTotal,
+        creditGoalLock,
         setChildren: setChildrenDirect,
         resetChildren,
       }}
