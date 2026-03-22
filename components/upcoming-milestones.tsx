@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { GraduationCap, Car, Home, Cake, Target } from "lucide-react"
 import { useChildren } from "@/context/children-context"
+import { parseGoalUnlockDate } from "@/lib/goal-dates"
 
 const iconByGoalName: Record<string, typeof GraduationCap> = {
   "College Fund": GraduationCap,
@@ -15,12 +16,6 @@ const iconByGoalName: Record<string, typeof GraduationCap> = {
   "Summer Camp": Target,
 }
 
-function parseUnlockDate(s: string): Date | null {
-  if (!s) return null
-  const d = new Date(s)
-  return isNaN(d.getTime()) ? null : d
-}
-
 export function UpcomingMilestones() {
   const { children } = useChildren()
 
@@ -28,15 +23,24 @@ export function UpcomingMilestones() {
     child.goals
       .filter((g) => g.locked)
       .map((goal) => {
-        const date = parseUnlockDate(goal.unlockDate)
+        const date = parseGoalUnlockDate(goal.unlockDate)
         return {
+          key: `${child.name}-${goal.id ?? goal.name}-${goal.unlockDate}`,
           child: child.name,
           avatar: child.avatar,
           event: goal.name,
-          date: date ? date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : goal.unlockDate,
+          date: date
+            ? date.toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              })
+            : goal.unlockDate,
           amount: `$${goal.current.toLocaleString()}`,
           icon: iconByGoalName[goal.name] ?? Target,
-          daysUntil: date ? Math.ceil((date.getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : 0,
+          daysUntil: date
+            ? Math.ceil((date.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+            : 0,
         }
       })
   )
@@ -56,9 +60,9 @@ export function UpcomingMilestones() {
             No upcoming unlocks. Add children and lock SOL to see milestones here.
           </p>
         ) : (
-          sorted.map((milestone, index) => (
+          sorted.map((milestone) => (
             <div
-              key={index}
+              key={milestone.key}
               className="flex items-center justify-between rounded-xl bg-muted/50 p-4 transition-colors hover:bg-muted"
             >
               <div className="flex items-center gap-4">

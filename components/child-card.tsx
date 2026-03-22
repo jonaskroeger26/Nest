@@ -8,8 +8,10 @@ import { useActions } from "@/context/actions-context"
 import { Plus, Lock, Unlock } from "lucide-react"
 import { useSolPrice, solToUsdFormatted } from "@/hooks/use-sol-price"
 import { ChildVaultActivity } from "@/components/child-vault-activity"
+import { formatGoalUnlockDisplay } from "@/lib/goal-dates"
 
 interface Goal {
+  id?: string
   name: string
   current: number
   target: number
@@ -89,7 +91,10 @@ export function ChildCard({
           Lock SOL for {name}
         </Button>
         {goals.map((goal, index) => (
-          <div key={index} className="rounded-xl bg-muted/50 p-4">
+          <div
+            key={goal.id ?? `${goal.name}-${index}`}
+            className="rounded-xl bg-muted/50 p-4"
+          >
             <div className="mb-3 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 {goal.locked ? (
@@ -100,7 +105,7 @@ export function ChildCard({
                 <span className="font-medium text-foreground">{goal.name}</span>
               </div>
               <span className="text-sm text-muted-foreground">
-                Unlocks {goal.unlockDate}
+                Unlocks {formatGoalUnlockDisplay(goal.unlockDate)}
               </span>
             </div>
             <div className="mb-2 flex items-center justify-between text-sm">

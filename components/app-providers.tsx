@@ -22,6 +22,34 @@ import {
   fetchParentDisplayNameFromChain,
   fetchRegisteredChildrenFromChain,
 } from "@/lib/solana-vault"
+import {
+  loadChildGoalsMap,
+  normalizeChildStorageKey,
+  type StoredGoal,
+} from "@/lib/child-local-storage"
+import type { Child } from "@/context/children-context"
+
+function attachStoredGoals(
+  address: string,
+  rows: Omit<Child, "goals">[]
+): Child[] {
+  const map = loadChildGoalsMap(address)
+  return rows.map((row) => {
+    const key = normalizeChildStorageKey(row.name)
+    const stored: StoredGoal[] = map[key] ?? []
+    return {
+      ...row,
+      goals: stored.map((g) => ({
+        id: g.id,
+        name: g.name,
+        current: g.current,
+        target: g.target,
+        locked: g.locked,
+        unlockDate: g.unlockDate,
+      })),
+    }
+  })
+}
 
 function RedirectOnConnect() {
   const { connected } = useWallet()
@@ -95,29 +123,25 @@ function ProfileGate({ children }: { children: React.ReactNode }) {
         if (name) setUserName(name)
 
         if (chainChildren.length > 0) {
-          setChildren(
-            chainChildren.map((c) => ({
-              name: c.name,
-              age: 0,
-              avatar: `https://api.dicebear.com/7.x/lorelei/svg?seed=${encodeURIComponent(c.name)}`,
-              totalSaved: 0,
-              goals: [],
-              beneficiaryAddress: c.beneficiary,
-            }))
-          )
+          const base = chainChildren.map((c) => ({
+            name: c.name,
+            age: 0,
+            avatar: `https://api.dicebear.com/7.x/lorelei/svg?seed=${encodeURIComponent(c.name)}`,
+            totalSaved: 0,
+            beneficiaryAddress: c.beneficiary,
+          }))
+          setChildren(attachStoredGoals(address, base))
         } else if (isInitialOrWalletSwitch && Array.isArray(api.children)) {
-          setChildren(
-            api.children.map((c) => ({
-              name: c.child_name,
-              age: 0,
-              avatar: `https://api.dicebear.com/7.x/lorelei/svg?seed=${encodeURIComponent(
-                c.child_name
-              )}`,
-              totalSaved: 0,
-              goals: [],
-              beneficiaryAddress: c.child_wallet ?? undefined,
-            }))
-          )
+          const base = api.children.map((c) => ({
+            name: c.child_name,
+            age: 0,
+            avatar: `https://api.dicebear.com/7.x/lorelei/svg?seed=${encodeURIComponent(
+              c.child_name
+            )}`,
+            totalSaved: 0,
+            beneficiaryAddress: c.child_wallet ?? undefined,
+          }))
+          setChildren(attachStoredGoals(address, base))
         }
       } catch (e) {
         console.error("Failed to load profile", e)

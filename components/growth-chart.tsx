@@ -12,6 +12,8 @@ import {
   type PortfolioRange,
   type PortfolioSnapshot,
 } from "@/hooks/use-portfolio-history"
+import { format } from "date-fns"
+import { parseGoalUnlockDate } from "@/lib/goal-dates"
 import {
   Area,
   AreaChart,
@@ -49,12 +51,14 @@ function goalSubtitle(c: Child): string {
   if (!goals?.length) return "Add a goal"
   const g = goals.find((x) => x.locked) ?? goals[0]
   if (!g) return "Add a goal"
+  const short = g.name.replace(/\s+fund$/i, "").trim()
+  const d = parseGoalUnlockDate(g.unlockDate)
+  if (d) return `${short} ${format(d, "yyyy")}`
   const y =
     typeof g.unlockDate === "string"
       ? (g.unlockDate.match(/\d{4}/)?.[0] ??
         (g.unlockDate.length >= 4 ? g.unlockDate.slice(-4) : ""))
       : ""
-  const short = g.name.replace(/\s+fund$/i, "").trim()
   if (y) return `${short} ${y}`
   return short || "Goal"
 }
