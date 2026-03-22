@@ -106,6 +106,17 @@ Deploy: `anchor deploy -p kids_vault --provider.cluster mainnet` with the **same
 
 **RPC / 403:** Public mainnet RPC often returns 403 — use Helius.
 
+## Auto-save (allowance + relayer)
+
+Recurring deposits are **pre-funded**: SOL sits in a program PDA (`auto_save` seeds). Only the configured **relayer** can call `execute_auto_save` to move one period’s lamports into the child’s existing **SOL vault** (same unlock timestamp as on-chain).
+
+1. **Upgrade** `kids-vault` after pulling the new instructions (same `anchor build` / `extend` / `upgrade` flow as above; the `.so` grows again).
+2. **Generate a relayer keypair** (separate from user wallets). Put the secret in **`NEST_AUTOSAVE_RELAYER_SECRET`** (JSON byte array). Fund that pubkey with a small amount of SOL for fees.
+3. Set **`NEXT_PUBLIC_NEST_AUTOSAVE_RELAYER_PUBKEY`** to that pubkey (must match the secret).
+4. Set **`NEST_AUTOSAVE_CRON_SECRET`**. Call **`/api/cron/auto-save`** with `Authorization: Bearer <NEST_AUTOSAVE_CRON_SECRET>` on a schedule (e.g. Vercel Cron, hourly). The route scans on-chain schedules for this relayer and submits `execute_auto_save` when due.
+
+Parents start a schedule from **Quick Actions → Auto-Save** or a child card (**Auto-save allowance**). The child must already have a SOL vault (use **Lock SOL** once). The dialog loads the on-chain schedule when present: **Fund** tops up escrow; **Cancel** closes the PDA and returns remaining SOL.
+
 ## Devnet
 
 Same as testnet but set `NEXT_PUBLIC_SOLANA_CLUSTER=devnet`, use `anchor deploy --provider.cluster devnet`, and Phantom on Devnet. Faucet: `solana airdrop 2` on devnet.

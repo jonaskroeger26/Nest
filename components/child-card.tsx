@@ -5,7 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { useActions } from "@/context/actions-context"
-import { Plus, Lock, Unlock } from "lucide-react"
+import { Plus, Lock, Unlock, PiggyBank } from "lucide-react"
 import { useSolPrice, solToUsdFormatted } from "@/hooks/use-sol-price"
 import { ChildVaultActivity } from "@/components/child-vault-activity"
 import { formatGoalUnlockDisplay } from "@/lib/goal-dates"
@@ -89,6 +89,22 @@ export function ChildCard({
         >
           <Lock className="h-4 w-4" />
           Lock SOL for {name}
+        </Button>
+        <Button
+          variant="outline"
+          className="w-full gap-2"
+          onClick={() =>
+            beneficiaryAddress && openAutoSaveForChild(beneficiaryAddress)
+          }
+          disabled={!beneficiaryAddress}
+          title={
+            beneficiaryAddress
+              ? "Recurring allowance into this child’s vault (after a lock exists)"
+              : "Register this child on-chain with a wallet first"
+          }
+        >
+          <PiggyBank className="h-4 w-4" />
+          Auto-save allowance
         </Button>
         {goals.map((goal, index) => (
           <div

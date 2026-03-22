@@ -23,7 +23,7 @@ const actions: Array<{
   { label: "Lock SOL", description: "Pick child — binds to their vault", icon: Plus, variant: "default", action: "addSol" },
   { label: "New Child", description: "Add child profile", icon: UserPlus, variant: "outline", action: "newChild" },
   { label: "Withdraw", description: "Unlocked funds", icon: ArrowUpRight, variant: "outline", action: "withdraw" },
-  { label: "Auto-Save", description: "Recurring deposits", icon: Clock, variant: "outline", action: "autoSave" },
+  { label: "Auto-Save", description: "Escrow + relayer drips", icon: Clock, variant: "outline", action: "autoSave" },
   { label: "Connect wallet", description: "Solana wallet", icon: Wallet, variant: "outline", action: "connect" },
   { label: "Gift Funds", description: "Family contribute", icon: Gift, variant: "outline", action: "gift" },
 ]

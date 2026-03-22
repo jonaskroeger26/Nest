@@ -2,38 +2,9 @@ import { NextResponse } from "next/server"
 import { Connection, PublicKey } from "@solana/web3.js"
 import { decodeDisplayName32 } from "@/lib/solana-vault"
 import { getKidsVaultProgramId } from "@/lib/solana-config"
+import { getServerSolanaCluster, getServerSolanaRpcUrl } from "@/lib/server-solana-env"
 
 const COOKIE_NAME = "nest_admin"
-
-function clusterFromEnv(): "mainnet-beta" | "testnet" | "devnet" {
-  const c = (process.env.NEXT_PUBLIC_SOLANA_CLUSTER ?? "testnet").toLowerCase()
-  if (c === "testnet") return "testnet"
-  if (c === "devnet") return "devnet"
-  return "mainnet-beta"
-}
-
-function rpcUrlFromEnv() {
-  const cluster = clusterFromEnv()
-  if (cluster === "testnet") {
-    return (
-      process.env.SOLANA_RPC_TESTNET ??
-      process.env.NEXT_PUBLIC_SOLANA_RPC_TESTNET ??
-      "https://api.testnet.solana.com"
-    )
-  }
-  if (cluster === "devnet") {
-    return (
-      process.env.SOLANA_RPC_DEVNET ??
-      process.env.NEXT_PUBLIC_SOLANA_RPC_DEVNET ??
-      "https://api.devnet.solana.com"
-    )
-  }
-  return (
-    process.env.SOLANA_RPC_MAINNET ??
-    process.env.NEXT_PUBLIC_SOLANA_RPC_MAINNET ??
-    "https://api.mainnet-beta.solana.com"
-  )
-}
 
 function requireAdmin(req: Request): NextResponse | null {
   const got = req.headers.get("cookie") ?? ""
@@ -74,7 +45,7 @@ export async function GET(req: Request) {
   if (denied) return denied
 
   const programId = getKidsVaultProgramId()
-  const conn = new Connection(rpcUrlFromEnv(), "confirmed")
+  const conn = new Connection(getServerSolanaRpcUrl(), "confirmed")
 
   // Fetch all parent profiles
   const parentProfiles = await conn.getProgramAccounts(programId, {
@@ -157,8 +128,8 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     ok: true,
-    cluster: clusterFromEnv(),
-    rpcUrl: rpcUrlFromEnv(),
+    cluster: getServerSolanaCluster(),
+    rpcUrl: getServerSolanaRpcUrl(),
     programId: programId.toBase58(),
     parents: rows,
   })

@@ -10,6 +10,7 @@ import { getKidsVaultProgramId } from "@/lib/solana-config"
 
 const VAULT_SEED = "vault"
 const TOKEN_VAULT_SEED = "token_vault"
+const AUTO_SAVE_SEED = "auto_save"
 
 // Anchor account sizes:
 // SOL vault:   8 (disc) + 32 (creator) + 32 (beneficiary) + 8 (unlock_ts) + 1 (bump) = 81
@@ -18,6 +19,8 @@ const VAULT_DATA_SIZE = 81
 const TOKEN_VAULT_DATA_SIZE = 113
 const PARENT_PROFILE_DATA_SIZE = 73
 const REGISTERED_CHILD_DATA_SIZE = 114
+/** On-chain `AutoSaveSchedule` account size (8-byte Anchor disc + packed fields). */
+export const AUTO_SAVE_SCHEDULE_DATA_SIZE = 138
 
 const TOKEN_PROGRAM_ID = new PublicKey(
   "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
@@ -57,6 +60,19 @@ export interface TokenVaultInfo {
 }
 
 export type AnyVaultInfo = VaultInfo | TokenVaultInfo
+
+export interface AutoSaveScheduleInfo {
+  schedulePda: string
+  parent: string
+  beneficiary: string
+  relayer: string
+  amountPerPeriodLamports: bigint
+  periodSeconds: number
+  nextExecutionUnix: number
+  vaultUnlockTimestamp: number
+  bump: number
+  active: boolean
+}
 
 // ---------------------------------------------------------------------------
 // Instruction discriminator — Anchor uses SHA256("global:<ix_name>")[0..8]
@@ -98,6 +114,103 @@ export function deriveTokenVaultPDA(
     getKidsVaultProgramId()
   )
   return pda
+}
+
+/** PDA holding escrow SOL; relayer moves `amount_per_period` to the SOL vault on schedule. */
+export function deriveAutoSaveSchedulePDA(
+  parent: PublicKey,
+  beneficiary: PublicKey
+): PublicKey {
+  const [pda] = PublicKey.findProgramAddressSync(
+    [
+      Buffer.from(AUTO_SAVE_SEED, "utf8"),
+      parent.toBuffer(),
+      beneficiary.toBuffer(),
+    ],
+    getKidsVaultProgramId()
+  )
+  return pda
+}
+
+/** Schedule PDA account as loaded from RPC (includes balances). */
+export type AutoSaveScheduleLoaded = {
+  schedulePda: string
+  parsed: AutoSaveScheduleInfo
+  /** Total lamports on the schedule account (escrow + rent). */
+  escrowLamports: number
+  /** Lamports the program can use for drips after rent reserve. */
+  spendableLamports: number
+}
+
+export async function fetchAutoSaveScheduleState(
+  connection: Connection,
+  parent: PublicKey,
+  beneficiary: PublicKey
+): Promise<AutoSaveScheduleLoaded | null> {
+  const pda = deriveAutoSaveSchedulePDA(parent, beneficiary)
+  const acc = await connection.getAccountInfo(pda)
+  if (!acc?.data || acc.data.length < AUTO_SAVE_SCHEDULE_DATA_SIZE) return null
+  if (!acc.owner.equals(getKidsVaultProgramId())) return null
+  const parsed = parseAutoSaveScheduleAccount(pda, Buffer.from(acc.data))
+  if (!parsed) return null
+  const minRent = await connection.getMinimumBalanceForRentExemption(
+    AUTO_SAVE_SCHEDULE_DATA_SIZE
+  )
+  const spendableLamports = Math.max(0, acc.lamports - minRent)
+  return {
+    schedulePda: pda.toBase58(),
+    parsed,
+    escrowLamports: acc.lamports,
+    spendableLamports,
+  }
+}
+
+export function parseAutoSaveScheduleAccount(
+  pubkey: PublicKey,
+  data: Buffer
+): AutoSaveScheduleInfo | null {
+  if (data.length < AUTO_SAVE_SCHEDULE_DATA_SIZE) return null
+  const parent = new PublicKey(data.subarray(8, 40))
+  const beneficiary = new PublicKey(data.subarray(40, 72))
+  const relayer = new PublicKey(data.subarray(72, 104))
+  const dv = new DataView(data.buffer, data.byteOffset, data.length)
+  const amountPerPeriodLamports = dv.getBigUint64(104, true)
+  const periodSeconds = Number(dv.getBigInt64(112, true))
+  const nextExecutionUnix = Number(dv.getBigInt64(120, true))
+  const vaultUnlockTimestamp = Number(dv.getBigInt64(128, true))
+  const bump = data[136] ?? 0
+  const active = (data[137] ?? 0) !== 0
+  return {
+    schedulePda: pubkey.toBase58(),
+    parent: parent.toBase58(),
+    beneficiary: beneficiary.toBase58(),
+    relayer: relayer.toBase58(),
+    amountPerPeriodLamports,
+    periodSeconds,
+    nextExecutionUnix,
+    vaultUnlockTimestamp,
+    bump,
+    active,
+  }
+}
+
+/** Unlock timestamp (unix seconds) for an existing SOL vault, or null if missing. */
+export async function getSolVaultUnlockTimestamp(
+  connection: Connection,
+  creator: PublicKey,
+  beneficiary: PublicKey
+): Promise<number | null> {
+  const vaultPda = deriveVaultPDA(creator, beneficiary)
+  const info = await connection.getAccountInfo(vaultPda)
+  if (!info?.data || info.data.length < VAULT_DATA_SIZE) return null
+  const programId = getKidsVaultProgramId()
+  if (!info.owner.equals(programId)) return null
+  const dv = new DataView(
+    info.data.buffer,
+    info.data.byteOffset,
+    info.data.length
+  )
+  return Number(dv.getBigInt64(72, true))
 }
 
 export function deriveATA(owner: PublicKey, mint: PublicKey): PublicKey {
@@ -892,4 +1005,190 @@ export async function createMsolVault(
     const userMsg = toUserMessage(e)
     throw userMsg ? new Error(userMsg) : e
   }
+}
+
+// ---------------------------------------------------------------------------
+// Auto-save schedule (escrow + relayer execute) — needs upgraded kids-vault
+// ---------------------------------------------------------------------------
+
+function writePubkeyToBuffer(pubkey: PublicKey, buf: Uint8Array, offset: number) {
+  const b = pubkey.toBytes()
+  for (let i = 0; i < 32; i++) buf[offset + i] = b[i]!
+}
+
+/**
+ * Create schedule + initial escrow. Requires an existing SOL vault for this child with matching unlock.
+ */
+export async function initAutoSaveSchedule(
+  connection: Connection,
+  parent: PublicKey,
+  beneficiary: PublicKey,
+  relayer: PublicKey,
+  amountPerPeriodSol: number,
+  periodSeconds: number,
+  vaultUnlockTimestamp: number,
+  escrowSol: number,
+  signTransaction: (tx: Transaction) => Promise<Transaction>
+): Promise<string> {
+  const amountLamports = BigInt(Math.floor(amountPerPeriodSol * 1e9))
+  if (amountLamports <= BigInt(0))
+    throw new Error("Amount per period must be greater than zero.")
+  const escrowLamports = BigInt(Math.floor(escrowSol * 1e9))
+  if (escrowLamports < BigInt(0)) throw new Error("Escrow cannot be negative.")
+
+  const programId = getKidsVaultProgramId()
+  const schedulePda = deriveAutoSaveSchedulePDA(parent, beneficiary)
+  const vaultPda = deriveVaultPDA(parent, beneficiary)
+  const disc = await instructionDiscriminator("init_auto_save_schedule")
+  const buf = new ArrayBuffer(8 + 32 + 8 + 8 + 8 + 8)
+  const data = new Uint8Array(buf)
+  data.set(disc, 0)
+  writePubkeyToBuffer(relayer, data, 8)
+  const dv = new DataView(buf)
+  dv.setBigUint64(40, amountLamports, true)
+  dv.setBigInt64(48, BigInt(periodSeconds), true)
+  dv.setBigInt64(56, BigInt(vaultUnlockTimestamp), true)
+  dv.setBigUint64(64, escrowLamports, true)
+
+  const ix = new TransactionInstruction({
+    programId,
+    keys: [
+      { pubkey: schedulePda, isSigner: false, isWritable: true },
+      { pubkey: vaultPda, isSigner: false, isWritable: true },
+      { pubkey: parent, isSigner: true, isWritable: true },
+      { pubkey: beneficiary, isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.from(data),
+  })
+  const tx = new Transaction()
+    .add(ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }))
+    .add(ix)
+  try {
+    const { blockhash, lastValidBlockHeight } =
+      await connection.getLatestBlockhash("confirmed")
+    tx.recentBlockhash = blockhash
+    tx.feePayer = parent
+    const signed = await signTransaction(tx)
+    const sig = await connection.sendRawTransaction(signed.serialize(), {
+      skipPreflight: false,
+    })
+    await connection.confirmTransaction(
+      { signature: sig, blockhash, lastValidBlockHeight },
+      "confirmed"
+    )
+    return sig
+  } catch (e) {
+    logTxError("initAutoSaveSchedule", e)
+    const userMsg = toUserMessage(e)
+    throw userMsg ? new Error(userMsg) : e
+  }
+}
+
+export async function fundAutoSaveSchedule(
+  connection: Connection,
+  parent: PublicKey,
+  beneficiary: PublicKey,
+  fundSol: number,
+  signTransaction: (tx: Transaction) => Promise<Transaction>
+): Promise<string> {
+  const lamports = BigInt(Math.floor(fundSol * 1e9))
+  if (lamports <= BigInt(0)) throw new Error("Amount must be greater than zero.")
+  const programId = getKidsVaultProgramId()
+  const schedulePda = deriveAutoSaveSchedulePDA(parent, beneficiary)
+  const disc = await instructionDiscriminator("fund_auto_save_schedule")
+  const raw = new ArrayBuffer(16)
+  const buf = new Uint8Array(raw)
+  buf.set(disc, 0)
+  new DataView(raw).setBigUint64(8, lamports, true)
+  const ix = new TransactionInstruction({
+    programId,
+    keys: [
+      { pubkey: schedulePda, isSigner: false, isWritable: true },
+      { pubkey: parent, isSigner: true, isWritable: true },
+      { pubkey: beneficiary, isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.from(buf),
+  })
+  const tx = new Transaction().add(ix)
+  try {
+    const { blockhash, lastValidBlockHeight } =
+      await connection.getLatestBlockhash("confirmed")
+    tx.recentBlockhash = blockhash
+    tx.feePayer = parent
+    const signed = await signTransaction(tx)
+    const sig = await connection.sendRawTransaction(signed.serialize(), {
+      skipPreflight: false,
+    })
+    await connection.confirmTransaction(
+      { signature: sig, blockhash, lastValidBlockHeight },
+      "confirmed"
+    )
+    return sig
+  } catch (e) {
+    logTxError("fundAutoSaveSchedule", e)
+    const userMsg = toUserMessage(e)
+    throw userMsg ? new Error(userMsg) : e
+  }
+}
+
+export async function cancelAutoSaveSchedule(
+  connection: Connection,
+  parent: PublicKey,
+  beneficiary: PublicKey,
+  signTransaction: (tx: Transaction) => Promise<Transaction>
+): Promise<string> {
+  const programId = getKidsVaultProgramId()
+  const schedulePda = deriveAutoSaveSchedulePDA(parent, beneficiary)
+  const disc = await instructionDiscriminator("cancel_auto_save_schedule")
+  const ix = new TransactionInstruction({
+    programId,
+    keys: [
+      { pubkey: schedulePda, isSigner: false, isWritable: true },
+      { pubkey: parent, isSigner: true, isWritable: true },
+      { pubkey: beneficiary, isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.from(disc),
+  })
+  const tx = new Transaction().add(ix)
+  try {
+    const { blockhash, lastValidBlockHeight } =
+      await connection.getLatestBlockhash("confirmed")
+    tx.recentBlockhash = blockhash
+    tx.feePayer = parent
+    const signed = await signTransaction(tx)
+    const sig = await connection.sendRawTransaction(signed.serialize(), {
+      skipPreflight: false,
+    })
+    await connection.confirmTransaction(
+      { signature: sig, blockhash, lastValidBlockHeight },
+      "confirmed"
+    )
+    return sig
+  } catch (e) {
+    logTxError("cancelAutoSaveSchedule", e)
+    const userMsg = toUserMessage(e)
+    throw userMsg ? new Error(userMsg) : e
+  }
+}
+
+/** Build `execute_auto_save` for the Nest relayer (server-side). */
+export async function buildExecuteAutoSaveInstruction(
+  schedulePda: PublicKey,
+  vaultPda: PublicKey,
+  relayer: PublicKey
+): Promise<TransactionInstruction> {
+  const disc = await instructionDiscriminator("execute_auto_save")
+  return new TransactionInstruction({
+    programId: getKidsVaultProgramId(),
+    keys: [
+      { pubkey: schedulePda, isSigner: false, isWritable: true },
+      { pubkey: vaultPda, isSigner: false, isWritable: true },
+      { pubkey: relayer, isSigner: true, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.from(disc),
+  })
 }

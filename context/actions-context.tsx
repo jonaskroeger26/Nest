@@ -21,6 +21,8 @@ type ActionsContextType = {
   lockForChildBeneficiary: string | null
   /** Pre-select goal row when opening Add SOL from a goal */
   lockGoalRef: LockGoalRef | null
+  /** Pre-select child in Auto-save by beneficiary wallet (from child card) */
+  autoSaveBeneficiary: string | null
   openAddSol: () => void
   openAddSolForChild: (
     childBeneficiaryAddress: string,
@@ -43,6 +45,9 @@ export function ActionsProvider({ children }: { children: React.ReactNode }) {
     string | null
   >(null)
   const [lockGoalRef, setLockGoalRef] = useState<LockGoalRef | null>(null)
+  const [autoSaveBeneficiary, setAutoSaveBeneficiary] = useState<string | null>(
+    null
+  )
 
   const openAddSol = useCallback(() => {
     setLockForChildBeneficiary(null)
@@ -59,7 +64,14 @@ export function ActionsProvider({ children }: { children: React.ReactNode }) {
   )
   const openNewChild = useCallback(() => setDialog("newChild"), [])
   const openWithdraw = useCallback(() => setDialog("withdraw"), [])
-  const openAutoSave = useCallback(() => setDialog("autoSave"), [])
+  const openAutoSave = useCallback(() => {
+    setAutoSaveBeneficiary(null)
+    setDialog("autoSave")
+  }, [])
+  const openAutoSaveForChild = useCallback((childBeneficiaryAddress: string) => {
+    setAutoSaveBeneficiary(childBeneficiaryAddress.trim())
+    setDialog("autoSave")
+  }, [])
   const openGift = useCallback(() => setDialog("gift"), [])
   const openAddGoal = useCallback((childName: string) => {
     setAddGoalChildName(childName)
@@ -79,11 +91,13 @@ export function ActionsProvider({ children }: { children: React.ReactNode }) {
         addGoalChildName,
         lockForChildBeneficiary,
         lockGoalRef,
+        autoSaveBeneficiary,
         openAddSol,
         openAddSolForChild,
         openNewChild,
         openWithdraw,
         openAutoSave,
+        openAutoSaveForChild,
         openGift,
         openAddGoal,
         closeDialog,
