@@ -5,26 +5,14 @@ import { useScrollAnimation } from "@/hooks/use-scroll-animation"
 import { Button } from "@/components/ui/button"
 import { ArrowDown } from "lucide-react"
 import Link from "next/link"
-import { useWallet } from "@/hooks/use-wallet"
-import { useRouter } from "next/navigation"
 
 export function HeroSection() {
   const { ref, scrollProgress } = useScrollAnimation()
   const [mounted, setMounted] = useState(false)
-  const { connected } = useWallet()
-  const router = useRouter()
 
   useEffect(() => {
     setMounted(true)
   }, [])
-
-  // If the user connects their wallet on the marketing page, send them straight
-  // to the dashboard experience at /app.
-  useEffect(() => {
-    if (connected) {
-      router.push("/app")
-    }
-  }, [connected, router])
 
   const safeProgress = mounted ? scrollProgress : 0
   // Keep the hero readable and not washed out; only apply a subtle parallax.
