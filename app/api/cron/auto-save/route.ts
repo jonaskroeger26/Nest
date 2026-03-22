@@ -17,17 +17,26 @@ import {
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
 
+function cronSecrets(): string[] {
+  const a = process.env.NEST_AUTOSAVE_CRON_SECRET?.trim()
+  const b = process.env.CRON_SECRET?.trim()
+  return [a, b].filter((x): x is string => !!x)
+}
+
 function requireCronAuth(req: Request): NextResponse | null {
-  const secret = process.env.NEST_AUTOSAVE_CRON_SECRET?.trim()
-  if (!secret) {
+  const secrets = cronSecrets()
+  if (secrets.length === 0) {
     return NextResponse.json(
-      { error: "NEST_AUTOSAVE_CRON_SECRET is not set." },
+      {
+        error:
+          "Set NEST_AUTOSAVE_CRON_SECRET or CRON_SECRET (Vercel Cron uses CRON_SECRET in Authorization).",
+      },
       { status: 503 }
     )
   }
   const auth = req.headers.get("authorization") ?? ""
   const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : ""
-  if (token !== secret) {
+  if (!secrets.includes(token)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
   return null

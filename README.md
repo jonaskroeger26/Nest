@@ -92,6 +92,18 @@ The app **defaults to testnet** (same as default program `3be5xt…`). If you se
 - **Testnet demo:** set `NEXT_PUBLIC_SOLANA_CLUSTER=testnet` (or omit — default), `NEXT_PUBLIC_KIDS_VAULT_PROGRAM_ID=3be5xt…`, Phantom on Testnet.
 - **Mainnet:** `NEXT_PUBLIC_SOLANA_CLUSTER=mainnet-beta`, Helius RPC envs, deploy kids-vault to mainnet, set that program ID.
 
+### Vercel env for auto-save (this deployment’s relayer pubkey)
+
+In **Vercel → Project → Settings → Environment Variables**, add (Production + Preview as needed):
+
+| Name | Example / note |
+|------|----------------|
+| `NEXT_PUBLIC_NEST_AUTOSAVE_RELAYER_PUBKEY` | `GE9Lu3sc3izKydLL9dqETa8YxLK8fhBpUGw68RcqCwzT` (must match `NEST_AUTOSAVE_RELAYER_SECRET`) |
+| `NEST_AUTOSAVE_RELAYER_SECRET` | JSON byte array from `nest-autosave-relayer.json` (server-only, never `NEXT_PUBLIC_`) |
+| `NEST_AUTOSAVE_CRON_SECRET` or `CRON_SECRET` | Same random string as local; use `CRON_SECRET` if you rely on Vercel’s Bearer header for cron |
+
+Redeploy after changing any **`NEXT_PUBLIC_*`** variable so the browser bundle picks it up.
+
 ## Mainnet
 
 ```bash
@@ -113,7 +125,7 @@ Recurring deposits are **pre-funded**: SOL sits in a program PDA (`auto_save` se
 1. **Upgrade** `kids-vault` after pulling the new instructions (same `anchor build` / `extend` / `upgrade` flow as above; the `.so` grows again).
 2. **Generate a relayer keypair** (separate from user wallets). Put the secret in **`NEST_AUTOSAVE_RELAYER_SECRET`** (JSON byte array). Fund that pubkey with a small amount of SOL for fees.
 3. Set **`NEXT_PUBLIC_NEST_AUTOSAVE_RELAYER_PUBKEY`** to that pubkey (must match the secret).
-4. Set **`NEST_AUTOSAVE_CRON_SECRET`**. Call **`/api/cron/auto-save`** with `Authorization: Bearer <NEST_AUTOSAVE_CRON_SECRET>` on a schedule (e.g. Vercel Cron, hourly). The route scans on-chain schedules for this relayer and submits `execute_auto_save` when due.
+4. Set **`NEST_AUTOSAVE_CRON_SECRET`** (or **`CRON_SECRET`** on Vercel — same value, Vercel sends it as `Authorization: Bearer …` on cron requests). The repo includes **`vercel.json`** with an hourly cron to **`/api/cron/auto-save`**. Locally, call the route with `Authorization: Bearer <your secret>`. The handler scans on-chain schedules for this relayer and submits `execute_auto_save` when due.
 
 Parents start a schedule from **Quick Actions → Auto-Save** or a child card (**Auto-save allowance**). The child must already have a SOL vault (use **Lock SOL** once). The dialog loads the on-chain schedule when present: **Fund** tops up escrow; **Cancel** closes the PDA and returns remaining SOL.
 

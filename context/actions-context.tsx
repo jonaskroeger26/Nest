@@ -31,6 +31,7 @@ type ActionsContextType = {
   openNewChild: () => void
   openWithdraw: () => void
   openAutoSave: () => void
+  openAutoSaveForChild: (childBeneficiaryAddress: string) => void
   openGift: () => void
   openAddGoal: (childName: string) => void
   closeDialog: () => void
@@ -82,6 +83,7 @@ export function ActionsProvider({ children }: { children: React.ReactNode }) {
     setAddGoalChildName(null)
     setLockForChildBeneficiary(null)
     setLockGoalRef(null)
+    setAutoSaveBeneficiary(null)
   }, [])
 
   return (

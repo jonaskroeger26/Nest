@@ -8,6 +8,7 @@ import { useActions } from "@/context/actions-context"
 import { Plus, Lock, Unlock, PiggyBank } from "lucide-react"
 import { useSolPrice, solToUsdFormatted } from "@/hooks/use-sol-price"
 import { ChildVaultActivity } from "@/components/child-vault-activity"
+import { VaultGiftQrButton } from "@/components/vault-gift-qr"
 import { formatGoalUnlockDisplay } from "@/lib/goal-dates"
 
 interface Goal {
@@ -36,7 +37,7 @@ export function ChildCard({
   goals,
   beneficiaryAddress,
 }: ChildCardProps) {
-  const { openAddGoal, openAddSolForChild } = useActions()
+  const { openAddGoal, openAddSolForChild, openAutoSaveForChild } = useActions()
   const { usdPerSol } = useSolPrice()
   const usd =
     totalSaved > 0 && usdPerSol != null
@@ -106,6 +107,12 @@ export function ChildCard({
           <PiggyBank className="h-4 w-4" />
           Auto-save allowance
         </Button>
+        {beneficiaryAddress ? (
+          <VaultGiftQrButton
+            childName={name}
+            beneficiaryAddress={beneficiaryAddress}
+          />
+        ) : null}
         {goals.map((goal, index) => (
           <div
             key={goal.id ?? `${goal.name}-${index}`}

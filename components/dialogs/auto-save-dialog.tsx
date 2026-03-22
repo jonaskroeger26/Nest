@@ -29,7 +29,8 @@ import {
 } from "@/lib/solana-vault"
 import { signTransactionWithBrowserWallet } from "@/lib/wallet-sign"
 import { solanaTxUrl, solanaAccountUrl } from "@/lib/solana-explorer"
-import { CalendarClock, RefreshCw, PiggyBank } from "lucide-react"
+import { CalendarClock, RefreshCw, PiggyBank, Lock } from "lucide-react"
+import { getSolanaCluster } from "@/lib/solana-config"
 
 const AUTO_SAVE_KEY = "nest_autosave_schedules"
 
@@ -66,8 +67,9 @@ export function AutoSaveDialog({
 }) {
   const { children } = useChildren()
   const { address, connect, connected } = useWallet()
-  const { autoSaveBeneficiary } = useActions()
+  const { autoSaveBeneficiary, openAddSolForChild } = useActions()
   const relayerPk = useMemo(() => relayerPubkeyFromEnv(), [])
+  const cluster = useMemo(() => getSolanaCluster(), [])
 
   const [amount, setAmount] = useState("")
   const [escrow, setEscrow] = useState("")
@@ -324,6 +326,27 @@ export function AutoSaveDialog({
   const showManage = existingSchedule != null && scheduleChecked
   const p = existingSchedule?.parsed
 
+  const amountNum = parseFloat(amount)
+  const escrowNum = parseFloat(escrow)
+  const startReasons: string[] = []
+  if (!relayerPk)
+    startReasons.push(
+      "Relayer pubkey missing — add NEXT_PUBLIC_NEST_AUTOSAVE_RELAYER_PUBKEY to env and restart the app."
+    )
+  if (!amount || !Number.isFinite(amountNum) || amountNum <= 0)
+    startReasons.push("Enter amount per period (SOL) greater than zero.")
+  if (!escrow || !Number.isFinite(escrowNum) || escrowNum <= 0)
+    startReasons.push("Enter initial escrow (SOL) greater than zero.")
+  if (unlockTs == null && beneficiaryStr && connected)
+    startReasons.push(
+      `No SOL vault found for this parent + child on ${cluster}. Use the same wallet you used to lock, switch Phantom to ${cluster}, then Lock SOL once — or open Lock SOL below.`
+    )
+  if (!connected) startReasons.push("Connect your wallet.")
+  if (!beneficiaryStr) startReasons.push("Select a child with a wallet address.")
+
+  const showStartForm =
+    !showManage && scheduleChecked && !scheduleLoading && beneficiaryStr
+
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
@@ -337,6 +360,11 @@ export function AutoSaveDialog({
             child&apos;s vault each period. Only the escrow can be spent — not an
             unlimited wallet pull.
           </DialogDescription>
+          <p className="text-xs text-muted-foreground">
+            App RPC cluster:{" "}
+            <span className="font-medium text-foreground">{cluster}</span> — match
+            Phantom (Developer settings → network).
+          </p>
         </DialogHeader>
 
         {!relayerPk && (
@@ -375,6 +403,11 @@ export function AutoSaveDialog({
               </option>
             ))}
           </select>
+          {children.length === 0 && (
+            <p className="text-sm text-amber-600 dark:text-amber-400">
+              Add a child in Nest first (with a beneficiary wallet).
+            </p>
+          )}
         </div>
 
         {beneficiaryStr && connected && (
@@ -463,7 +496,7 @@ export function AutoSaveDialog({
                 <Button
                   type="button"
                   onClick={() => void handleFund()}
-                  disabled={fundLoading || !relayerPk}
+                  disabled={fundLoading}
                 >
                   {fundLoading ? "…" : "Fund"}
                 </Button>
@@ -482,11 +515,35 @@ export function AutoSaveDialog({
           </div>
         )}
 
-        {!showManage && scheduleChecked && !scheduleLoading && (
+        {showStartForm && (
           <form onSubmit={handleSubmit} className="space-y-4">
             <p className="text-xs text-muted-foreground">
               No on-chain schedule for this child yet. Create one below (vault required).
             </p>
+            {startReasons.length > 0 && (
+              <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+                <p className="mb-1 font-medium">Can’t start yet:</p>
+                <ul className="list-inside list-disc space-y-1">
+                  {startReasons.map((r, i) => (
+                    <li key={i}>{r}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {unlockTs == null && beneficiaryStr && connected && (
+              <Button
+                type="button"
+                variant="secondary"
+                className="w-full gap-2"
+                onClick={() => {
+                  onClose()
+                  openAddSolForChild(beneficiaryStr)
+                }}
+              >
+                <Lock className="h-4 w-4" />
+                Open Lock SOL for this child
+              </Button>
+            )}
             <div className="space-y-2">
               <Label>Amount (SOL) per period</Label>
               <Input
@@ -535,9 +592,11 @@ export function AutoSaveDialog({
                   loading ||
                   !relayerPk ||
                   !amount ||
-                  parseFloat(amount) <= 0 ||
+                  !Number.isFinite(amountNum) ||
+                  amountNum <= 0 ||
                   !escrow ||
-                  parseFloat(escrow) <= 0 ||
+                  !Number.isFinite(escrowNum) ||
+                  escrowNum <= 0 ||
                   unlockTs == null
                 }
               >
