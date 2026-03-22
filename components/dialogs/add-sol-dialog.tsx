@@ -63,21 +63,23 @@ function keyToCreditRef(key: string): { id?: string; index?: number } {
   return {}
 }
 
-/** `datetime-local` value for noon on the goal’s unlock calendar day (local). */
-function goalUnlockToDatetimeLocal(unlockDate: string): string {
+/**
+ * End of the goal’s unlock calendar day (local), as unix seconds — used on-chain
+ * so adding to a goal never requires re-entering a datetime.
+ */
+function goalUnlockToUnixSeconds(unlockDate: string): number | null {
   const d = parseGoalUnlockDate(unlockDate)
-  if (!d) return ""
-  const local = new Date(
+  if (!d) return null
+  const end = new Date(
     d.getFullYear(),
     d.getMonth(),
     d.getDate(),
-    12,
-    0,
-    0,
-    0
+    23,
+    59,
+    59,
+    999
   )
-  const pad = (n: number) => String(n).padStart(2, "0")
-  return `${local.getFullYear()}-${pad(local.getMonth() + 1)}-${pad(local.getDate())}T${pad(local.getHours())}:${pad(local.getMinutes())}`
+  return Math.floor(end.getTime() / 1000)
 }
 
 export function AddSolDialog({
@@ -146,13 +148,6 @@ export function AddSolDialog({
     }
   }, [selected, selectedGoalKey])
 
-  // Fill unlock from goal when a goal is selected.
-  useEffect(() => {
-    if (!selectedGoal) return
-    const local = goalUnlockToDatetimeLocal(selectedGoal.unlockDate)
-    if (local) setUnlockDate(local)
-  }, [selectedGoal])
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
@@ -165,16 +160,40 @@ export function AddSolDialog({
       return
     }
     const amountNum = parseFloat(amount)
-    const unlockTs = unlockDate
-      ? Math.floor(new Date(unlockDate).getTime() / 1000)
-      : 0
+    const nowSec = Math.floor(Date.now() / 1000)
+
+    let unlockTs = 0
+    if (selectedGoal) {
+      unlockTs = goalUnlockToUnixSeconds(selectedGoal.unlockDate) ?? 0
+      if (!unlockTs) {
+        setError(
+          "Could not read this goal’s unlock date. Use Custom and set unlock manually, or fix the goal date."
+        )
+        return
+      }
+      if (unlockTs <= nowSec) {
+        setError(
+          "This goal’s unlock date is already in the past. Switch to Custom to set a future unlock, or edit the goal."
+        )
+        return
+      }
+    } else {
+      unlockTs = unlockDate
+        ? Math.floor(new Date(unlockDate).getTime() / 1000)
+        : 0
+      if (!unlockTs) {
+        setError("Set an unlock date, or pick a goal to use its date.")
+        return
+      }
+      if (unlockTs <= nowSec) {
+        setError("Unlock date must be in the future.")
+        return
+      }
+    }
+
     const benStr = selected.beneficiaryAddress.trim()
     if (!amountNum || amountNum <= 0) {
       setError("Enter a valid amount.")
-      return
-    }
-    if (unlockTs <= Math.floor(Date.now() / 1000)) {
-      setError("Unlock date must be in the future.")
       return
     }
     let beneficiaryPubkey: PublicKey
@@ -272,8 +291,8 @@ export function AddSolDialog({
           <DialogTitle>Lock SOL for a child</DialogTitle>
           <DialogDescription className="space-y-1">
             <span className="block">
-              Pick a child, then optionally a <strong>goal</strong> so the unlock
-              time matches that goal and savings progress updates in USD.
+              Pick a child, then a <strong>goal</strong> to reuse its unlock date
+              automatically (no date picker), or Custom to set unlock yourself.
             </span>
             <span className="block">
               The lock is still bound to <strong>their</strong> on-chain vault
@@ -338,8 +357,8 @@ export function AddSolDialog({
                 ))}
               </select>
               <p className="text-[11px] text-muted-foreground">
-                Choosing a goal fills the unlock time from that goal and credits
-                its progress bar using SOL × current price after the tx succeeds.
+                With a goal selected, unlock time comes from that goal (end of that
+                calendar day). Progress still credits in USD after the tx.
               </p>
             </div>
           ) : null}
@@ -381,12 +400,28 @@ export function AddSolDialog({
             />
           </div>
           <div className="space-y-2">
-            <Label>Unlock date *</Label>
-            <Input
-              type="datetime-local"
-              value={unlockDate}
-              onChange={(e) => setUnlockDate(e.target.value)}
-            />
+            {selectedGoal ? (
+              <>
+                <Label>Unlock</Label>
+                <div className="rounded-md border border-input bg-muted/30 px-3 py-2.5 text-sm text-foreground">
+                  <span className="font-medium">
+                    {formatGoalUnlockDisplay(selectedGoal.unlockDate)}
+                  </span>
+                  <span className="block text-xs text-muted-foreground">
+                    Taken from this goal — you don’t need to set the date again.
+                  </span>
+                </div>
+              </>
+            ) : (
+              <>
+                <Label>Unlock date *</Label>
+                <Input
+                  type="datetime-local"
+                  value={unlockDate}
+                  onChange={(e) => setUnlockDate(e.target.value)}
+                />
+              </>
+            )}
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>
