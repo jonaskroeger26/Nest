@@ -12,7 +12,9 @@
 
 **Route handlers** (`/api/solana-rpc`, `/api/admin/nestdev`) call **Upstash Redis** using the **Node.js** runtime (`runtime = "nodejs"`). That way **`UPSTASH_*` env vars on Vercel are always visible** (Edge Middleware often does not see the same secrets, so limits would silently not run).
 
-**UX:** `RpcAvailabilityProvider` in `app/layout.tsx` probes `/api/solana-rpc` before rendering the app. On **429**, users see a **full-page “Too many requests”** screen (not the normal marketing or dashboard UI). The probe **primes** the RPC URL cache so `getConnection()` does not double-fetch on first load.
+**UX:** `RpcAvailabilityProvider` in `app/layout.tsx` wraps `AppProviders` and probes `/api/solana-rpc` before rendering children. On **429**, users see a **full-page “Too many requests”** screen. The probe **primes** the RPC URL cache so `getConnection()` does not double-fetch on first load.
+
+**Root layout must still import `./globals.css`, fonts, `AppProviders`, and `AnalyticsClient`** — removing those (e.g. when adding the gate) will ship **unstyled HTML** in production.
 
 | Route pattern        | Default limit              | Notes                                      |
 | -------------------- | -------------------------- | ------------------------------------------ |
