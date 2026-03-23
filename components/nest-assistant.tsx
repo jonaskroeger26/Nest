@@ -1,12 +1,23 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react"
 import { usePathname } from "next/navigation"
 import {
   Bird,
+  Copy,
   HelpCircle,
   Lock,
   MessageCircle,
+  RotateCcw,
   Send,
   Sparkles,
   Users,
@@ -27,8 +38,10 @@ import { cn } from "@/lib/utils"
 import {
   NEST_FAQ_ENTRIES,
   answerNestQuestion,
+  filterFaqEntries,
   type NestFaqEntry,
 } from "@/lib/nest-help-faq"
+import { toast } from "sonner"
 
 const AUTO_TOUR_STORAGE_KEY = "nest_auto_tour_dismissed_v1"
 
@@ -68,7 +81,60 @@ const TUTORIAL_STEPS: TutorialStep[] = [
   },
 ]
 
-type ChatMsg = { role: "user" | "assistant"; text: string; title?: string }
+type ChatMsg = {
+  id: string
+  role: "user" | "assistant"
+  text: string
+  title?: string
+  confidence?: "high" | "medium" | "low"
+  alternatives?: NestFaqEntry[]
+  related?: NestFaqEntry[]
+}
+
+function formatLineWithBold(line: string): ReactNode {
+  const parts = line.split(/(\*\*[^*]+\*\*)/g)
+  return parts.map((part, i) => {
+    const m = part.match(/^\*\*(.+)\*\*$/)
+    if (m) {
+      return (
+        <strong key={i} className="font-semibold text-foreground">
+          {m[1]}
+        </strong>
+      )
+    }
+    return <span key={i}>{part}</span>
+  })
+}
+
+function FormattedAssistantText({ text }: { text: string }) {
+  const blocks = text.split(/\n\n/)
+  return (
+    <div className="space-y-2">
+      {blocks.map((block, bi) => (
+        <div key={bi} className="space-y-1">
+          {block.split("\n").map((line, li) => (
+            <p key={li} className="leading-relaxed text-muted-foreground">
+              {formatLineWithBold(line)}
+            </p>
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function TypingIndicator() {
+  return (
+    <div
+      className="mr-4 flex items-center gap-1 rounded-2xl border border-border/80 bg-muted/40 px-4 py-3"
+      aria-hidden
+    >
+      <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/60 [animation-delay:0ms]" />
+      <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/60 [animation-delay:150ms]" />
+      <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/60 [animation-delay:300ms]" />
+    </div>
+  )
+}
 
 function markAutoTourHandled() {
   try {
@@ -86,21 +152,50 @@ function shouldOfferAutoTour(): boolean {
   }
 }
 
+let msgId = 0
+function nextMsgId() {
+  msgId += 1
+  return `m-${msgId}-${Date.now()}`
+}
+
+const WELCOME_MESSAGES: ChatMsg[] = [
+  {
+    id: "welcome-1",
+    role: "assistant",
+    title: "Hi — I’m the Nest guide",
+    text: "Ask in your own words, or tap a topic below. I use **keyword matching** on curated answers (no live AI), so short questions work best.\n\nTry: **gifts**, **testnet**, **auto-save**, or **vault vs wallet**.",
+  },
+]
+
 export function NestAssistant() {
   const pathname = usePathname()
+  const listRef = useRef<HTMLDivElement>(null)
+  const inputId = useId()
   const [open, setOpen] = useState(false)
   const [tab, setTab] = useState<NestAssistantTab>("chat")
   const [stepIndex, setStepIndex] = useState(0)
   const [input, setInput] = useState("")
-  const [messages, setMessages] = useState<ChatMsg[]>(() => [
-    {
-      role: "assistant",
-      title: "Hi! I’m the Nest guide",
-      text: "Ask in your own words, or tap a suggested question. I match common questions—there’s no live AI backend.",
-    },
-  ])
+  const [messages, setMessages] = useState<ChatMsg[]>(WELCOME_MESSAGES)
+  const [isTyping, setIsTyping] = useState(false)
   const autoOfferPendingRef = useRef(false)
   const autoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const deferredInput = useDeferredValue(input)
+  const suggestedEntries = useMemo(
+    () => filterFaqEntries(deferredInput, 14),
+    [deferredInput]
+  )
+
+  const scrollToBottom = useCallback(() => {
+    const el = listRef.current
+    if (!el) return
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" })
+  }, [])
+
+  useEffect(() => {
+    scrollToBottom()
+  }, [messages, isTyping, scrollToBottom])
 
   const openAssistant = useCallback((nextTab: NestAssistantTab) => {
     setTab(nextTab)
@@ -130,6 +225,12 @@ export function NestAssistant() {
     }
   }, [pathname])
 
+  useEffect(() => {
+    return () => {
+      if (typingTimerRef.current) clearTimeout(typingTimerRef.current)
+    }
+  }, [])
+
   const handleOpenChange = (next: boolean) => {
     setOpen(next)
     if (!next && autoOfferPendingRef.current) {
@@ -146,24 +247,67 @@ export function NestAssistant() {
     setStepIndex(0)
   }, [])
 
+  const clearChat = useCallback(() => {
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current)
+    typingTimerRef.current = null
+    setIsTyping(false)
+    setMessages(WELCOME_MESSAGES.map((m) => ({ ...m, id: nextMsgId() })))
+  }, [])
+
   const sendQuestion = (raw: string) => {
     const q = raw.trim()
-    if (!q) return
+    if (!q || isTyping) return
     setInput("")
-    setMessages((m) => [...m, { role: "user", text: q }])
-    const { title, body } = answerNestQuestion(q)
-    setMessages((m) => [
-      ...m,
-      { role: "assistant", title, text: body },
-    ])
+    const userMsg: ChatMsg = { id: nextMsgId(), role: "user", text: q }
+    setMessages((m) => [...m, userMsg])
+    setIsTyping(true)
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current)
+    const delay = 380 + Math.floor(Math.random() * 320)
+    typingTimerRef.current = setTimeout(() => {
+      const ans = answerNestQuestion(q)
+      const assistantMsg: ChatMsg = {
+        id: nextMsgId(),
+        role: "assistant",
+        title: ans.title,
+        text: ans.body,
+        confidence: ans.confidence,
+        alternatives: ans.alternatives,
+        related: ans.related,
+      }
+      setMessages((m) => [...m, assistantMsg])
+      setIsTyping(false)
+      typingTimerRef.current = null
+    }, delay)
   }
 
   const appendSuggestion = (entry: NestFaqEntry) => {
+    if (isTyping) return
     setMessages((m) => [
       ...m,
-      { role: "user", text: entry.title },
-      { role: "assistant", title: entry.title, text: entry.answer },
+      { id: nextMsgId(), role: "user", text: entry.title },
+      {
+        id: nextMsgId(),
+        role: "assistant",
+        title: entry.title,
+        text: entry.answer,
+        confidence: "high",
+        related: entry.relatedIds
+          ?.map((id) => NEST_FAQ_ENTRIES.find((e) => e.id === id))
+          .filter((e): e is NestFaqEntry => Boolean(e))
+          .filter((e) => e.id !== entry.id)
+          .slice(0, 4),
+      },
     ])
+  }
+
+  const copyAnswer = async (text: string, title?: string) => {
+    const block = title ? `${title}\n\n${text}` : text
+    try {
+      await navigator.clipboard.writeText(block.replace(/\*\*/g, ""))
+      toast.success("Copied to clipboard")
+    } catch {
+      toast.error("Could not copy")
+    }
   }
 
   const step = TUTORIAL_STEPS[stepIndex]!
@@ -186,7 +330,7 @@ export function NestAssistant() {
       </Button>
 
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent className="flex max-h-[min(90vh,640px)] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
+        <DialogContent className="flex max-h-[min(92vh,680px)] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
           <Tabs
             value={tab}
             onValueChange={(v) => setTab(v as NestAssistantTab)}
@@ -199,7 +343,8 @@ export function NestAssistant() {
                   Nest help center
                 </DialogTitle>
                 <DialogDescription className="text-xs">
-                  Quick answers and a short animated walkthrough—no account required.
+                  Smart topic matching and curated answers. For a walkthrough, open
+                  the Tour tab.
                 </DialogDescription>
               </DialogHeader>
               <TabsList className="mt-3 w-full">
@@ -216,43 +361,167 @@ export function NestAssistant() {
 
             <TabsContent
               value="chat"
-              className="mt-0 flex min-h-[320px] flex-1 flex-col overflow-hidden px-4 pb-4 data-[state=inactive]:hidden"
+              className="mt-0 flex min-h-[340px] flex-1 flex-col overflow-hidden px-4 pb-4 data-[state=inactive]:hidden"
             >
-              <div className="flex flex-1 flex-col gap-2 overflow-y-auto py-3">
-                {messages.map((msg, i) => (
-                  <div
-                    key={`${i}-${msg.text.slice(0, 12)}`}
-                    className={cn(
-                      "animate-in fade-in slide-in-from-bottom-2 duration-300",
-                      msg.role === "user"
-                        ? "ml-6 rounded-2xl bg-primary/10 px-3 py-2 text-sm text-foreground"
-                        : "mr-4 rounded-2xl border border-border/80 bg-muted/40 px-3 py-2 text-sm text-foreground"
-                    )}
-                  >
-                    {msg.title && msg.role === "assistant" ? (
-                      <p className="mb-1 font-semibold text-foreground">
-                        {msg.title}
-                      </p>
+              <div className="flex items-center justify-between gap-2 border-b border-border/80 py-2">
+                <p className="text-[11px] text-muted-foreground">
+                  {NEST_FAQ_ENTRIES.length} topics · matches keywords & synonyms
+                </p>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 gap-1 text-xs text-muted-foreground"
+                  onClick={clearChat}
+                  disabled={isTyping}
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  Reset chat
+                </Button>
+              </div>
+
+              <div
+                ref={listRef}
+                className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto py-3"
+              >
+                {messages.map((msg) => (
+                  <div key={msg.id} className="space-y-2">
+                    <div
+                      className={cn(
+                        "animate-in fade-in slide-in-from-bottom-2 duration-300",
+                        msg.role === "user"
+                          ? "ml-5 rounded-2xl bg-primary/10 px-3 py-2.5 text-sm text-foreground"
+                          : "mr-2 rounded-2xl border border-border/80 bg-muted/40 px-3 py-2.5 text-sm"
+                      )}
+                    >
+                      {msg.role === "assistant" ? (
+                        <div className="mb-2 flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            {msg.title ? (
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="font-semibold text-foreground">
+                                  {msg.title}
+                                </p>
+                                {msg.confidence ? (
+                                  <span
+                                    className={cn(
+                                      "rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide",
+                                      msg.confidence === "high" &&
+                                        "bg-primary/15 text-primary",
+                                      msg.confidence === "medium" &&
+                                        "bg-amber-500/15 text-amber-800 dark:text-amber-200",
+                                      msg.confidence === "low" &&
+                                        "bg-muted text-muted-foreground"
+                                    )}
+                                  >
+                                    {msg.confidence} match
+                                  </span>
+                                ) : null}
+                              </div>
+                            ) : null}
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 shrink-0 text-muted-foreground"
+                            aria-label="Copy answer"
+                            onClick={() => void copyAnswer(msg.text, msg.title)}
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      ) : null}
+                      {msg.role === "assistant" ? (
+                        <FormattedAssistantText text={msg.text} />
+                      ) : (
+                        <p className="whitespace-pre-wrap leading-relaxed">
+                          {msg.text}
+                        </p>
+                      )}
+                    </div>
+
+                    {msg.role === "assistant" &&
+                    msg.alternatives &&
+                    msg.alternatives.length > 0 ? (
+                      <div className="mr-2 space-y-1.5 pl-1">
+                        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                          You might mean
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {msg.alternatives.map((e) => (
+                            <Button
+                              key={e.id}
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              className="h-auto rounded-full px-2.5 py-1 text-xs font-normal"
+                              disabled={isTyping}
+                              onClick={() => appendSuggestion(e)}
+                            >
+                              {e.title}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
                     ) : null}
-                    <p className="whitespace-pre-wrap leading-relaxed text-muted-foreground">
-                      {msg.text}
-                    </p>
+
+                    {msg.role === "assistant" &&
+                    msg.related &&
+                    msg.related.length > 0 ? (
+                      <div className="mr-2 space-y-1.5 pl-1">
+                        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                          Related
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {msg.related.map((e) => (
+                            <Button
+                              key={e.id}
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-auto rounded-full border-dashed px-2.5 py-1 text-xs font-normal"
+                              disabled={isTyping}
+                              onClick={() => appendSuggestion(e)}
+                            >
+                              {e.title}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 ))}
+                {isTyping ? <TypingIndicator /> : null}
               </div>
 
               <div className="space-y-2 border-t border-border pt-3">
-                <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                  Suggested
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {NEST_FAQ_ENTRIES.slice(0, 6).map((e) => (
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    {deferredInput.trim()
+                      ? "Matching topics"
+                      : "Browse topics"}
+                  </p>
+                  {deferredInput.trim() ? (
+                    <button
+                      type="button"
+                      className="text-[11px] text-primary hover:underline"
+                      onClick={() => setInput("")}
+                    >
+                      Clear filter
+                    </button>
+                  ) : null}
+                </div>
+                <div className="flex max-h-[72px] flex-wrap gap-1.5 overflow-y-auto pr-0.5">
+                  {suggestedEntries.map((e) => (
                     <Button
                       key={e.id}
                       type="button"
                       variant="secondary"
                       size="sm"
-                      className="h-auto rounded-full px-2.5 py-1 text-xs font-normal"
+                      className="h-auto max-w-full truncate rounded-full px-2.5 py-1 text-xs font-normal"
+                      disabled={isTyping}
+                      title={`${e.category}: ${e.title}`}
                       onClick={() => appendSuggestion(e)}
                     >
                       {e.title}
@@ -266,14 +535,24 @@ export function NestAssistant() {
                     sendQuestion(input)
                   }}
                 >
+                  <label htmlFor={inputId} className="sr-only">
+                    Ask a question
+                  </label>
                   <Input
+                    id={inputId}
                     value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    placeholder="e.g. How do gifts work?"
+                    onChange={(e) => setInput(e.targetValue)}
+                    placeholder="e.g. Can grandparents send SOL?"
                     className="flex-1"
                     autoComplete="off"
+                    disabled={isTyping}
                   />
-                  <Button type="submit" size="icon" aria-label="Send">
+                  <Button
+                    type="submit"
+                    size="icon"
+                    aria-label="Send"
+                    disabled={isTyping || !input.trim()}
+                  >
                     <Send className="h-4 w-4" />
                   </Button>
                 </form>
@@ -336,9 +615,7 @@ export function NestAssistant() {
                       variant="outline"
                       size="sm"
                       disabled={stepIndex === 0}
-                      onClick={() =>
-                        setStepIndex((s) => Math.max(0, s - 1))
-                      }
+                      onClick={() => setStepIndex((s) => Math.max(0, s - 1))}
                     >
                       Back
                     </Button>

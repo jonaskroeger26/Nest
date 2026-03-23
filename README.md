@@ -5,7 +5,7 @@
 ### Help, tour & navigation
 
 - **Home** (`/`) vs **Dashboard** (`/app`): links in the marketing top bar, app header, and footer (“Navigate”).
-- **Floating help** (bottom-right on every page): **Ask** = FAQ-style answers (keyword matching on curated topics—no paid AI API). **Tour** = short animated walkthrough (replay anytime).
+- **Floating help** (bottom-right on every page): **Ask** = FAQ assistant with **synonym expansion**, ranked matching, **related topics**, “you might mean” when unsure, **typing delay**, **reset chat**, copy answer, and live **topic search** as you type. No paid AI API. **Tour** = short animated walkthrough (replay anytime).
 - The tour auto-opens once on first **Dashboard** visit until the user closes it, skips, or finishes (`localStorage` key `nest_auto_tour_dismissed_v1`). From the marketing page, use **Tour** in the top bar or the help button → **Tour** tab.
 
 ### On-chain identity & locks
