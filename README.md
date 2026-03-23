@@ -2,6 +2,12 @@
 
 **Runs on testnet until you switch.** Default RPC is **testnet** (matches program `3be5xt…`). On Vercel, don’t set `mainnet-beta` until kids-vault is deployed on mainnet and you’re ready. Use **Phantom → Testnet** and faucet SOL.
 
+### Help, tour & navigation
+
+- **Home** (`/`) vs **Dashboard** (`/app`): links in the marketing top bar, app header, and footer (“Navigate”).
+- **Floating help** (bottom-right on every page): **Ask** = FAQ-style answers (keyword matching on curated topics—no paid AI API). **Tour** = short animated walkthrough (replay anytime).
+- The tour auto-opens once on first **Dashboard** visit until the user closes it, skips, or finishes (`localStorage` key `nest_auto_tour_dismissed_v1`). From the marketing page, use **Tour** in the top bar or the help button → **Tour** tab.
+
 ### On-chain identity & locks
 
 - **Parent name:** signed tx `set_parent_display_name` (welcome flow or Settings → “Save name on-chain”).

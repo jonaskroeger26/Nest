@@ -2,10 +2,12 @@
 
 import { useScrollAnimation } from "@/hooks/use-scroll-animation"
 import Link from "next/link"
+import { SiteNavLinks } from "@/components/site-nav-links"
 
 const footerLinks = {
   Product: [
-    { name: "Launch App", href: "/app" },
+    { name: "Home", href: "/" },
+    { name: "Dashboard", href: "/app" },
     { name: "How It Works", href: "#how-it-works" },
     { name: "Features", href: "#features" },
     { name: "FAQ", href: "#faq" },
@@ -48,6 +50,12 @@ export function Footer() {
             <p className="text-muted-foreground text-sm leading-relaxed">
               Securing your children's financial future on Solana. Non-custodial, transparent, and built for families.
             </p>
+            <div className="mt-5">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Navigate
+              </p>
+              <SiteNavLinks layout="vertical" />
+            </div>
           </div>
 
           {Object.entries(footerLinks).map(([category, links]) => (

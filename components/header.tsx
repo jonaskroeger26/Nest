@@ -53,6 +53,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Separator } from "@/components/ui/separator"
+import { SiteNavLinks } from "@/components/site-nav-links"
 
 const NOTIF_READ_STORAGE_KEY = "nest_notifications_read_v1"
 
@@ -294,27 +295,33 @@ export function Header() {
         onClose={() => setShowConnectName(false)}
         onContinue={handleNameContinue}
       />
-      <div className="flex items-center justify-between px-6 py-4">
-        <Link
-          href="/"
-          className="flex items-center gap-3 rounded-lg outline-none ring-offset-background transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring"
-          aria-label="Nest home"
-        >
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
-            <Bird className="h-5 w-5 text-primary-foreground" />
-          </div>
-          <span className="text-xl font-semibold text-foreground">Nest</span>
-          {!isMainnetVaults() && (
-            <Badge
-              variant="secondary"
-              className="hidden border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200 sm:inline-flex"
-            >
-              Testnet
-            </Badge>
-          )}
-        </Link>
+      <div className="flex items-center justify-between gap-3 px-4 py-4 sm:gap-6 sm:px-6">
+        <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-6">
+          <Link
+            href="/"
+            className="flex min-w-0 shrink-0 items-center gap-2 rounded-lg outline-none ring-offset-background transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring sm:gap-3"
+            aria-label="Nest marketing home"
+          >
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary">
+              <Bird className="h-5 w-5 text-primary-foreground" />
+            </div>
+            <span className="truncate text-lg font-semibold text-foreground sm:text-xl">
+              Nest
+            </span>
+            {!isMainnetVaults() && (
+              <Badge
+                variant="secondary"
+                className="hidden border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200 sm:inline-flex"
+              >
+                Testnet
+              </Badge>
+            )}
+          </Link>
+          <SiteNavLinks className="hidden min-w-0 md:flex" />
+        </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-4">
+          <SiteNavLinks className="flex md:hidden" />
           {!connected ? (
             <Button
               variant="default"

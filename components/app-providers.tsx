@@ -16,6 +16,7 @@ import { WithdrawDialog } from "@/components/dialogs/withdraw-dialog"
 import { AutoSaveDialog } from "@/components/dialogs/auto-save-dialog"
 import { GiftDialog } from "@/components/dialogs/gift-dialog"
 import { AddGoalDialog } from "@/components/dialogs/add-goal-dialog"
+import { NestAssistant } from "@/components/nest-assistant"
 import {
   getConnection,
   fetchParentDisplayNameFromChain,
@@ -199,6 +200,7 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
               <ProfileGate>
                 <ActionsProvider>
                   {children}
+                  <NestAssistant />
                   <DialogRenderer />
                   <Toaster position="bottom-center" richColors />
                 </ActionsProvider>

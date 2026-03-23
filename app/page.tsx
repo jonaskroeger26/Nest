@@ -1,3 +1,4 @@
+import { MarketingTopBar } from "@/components/marketing-top-bar"
 import { HeroSection } from "@/components/sections/hero-section"
 import { TextRevealSection } from "@/components/sections/text-reveal-section"
 import { FeatureCardsSection } from "@/components/sections/feature-cards-section"
@@ -11,6 +12,7 @@ import { Footer } from "@/components/sections/footer"
 export default function Home() {
   return (
     <main className="bg-background text-foreground min-h-screen">
+      <MarketingTopBar />
       <HeroSection />
       <TextRevealSection />
       <FeatureCardsSection />
