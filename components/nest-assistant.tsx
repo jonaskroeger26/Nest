@@ -182,10 +182,15 @@ export function NestAssistant() {
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const deferredInput = useDeferredValue(input)
-  const suggestedEntries = useMemo(
-    () => filterFaqEntries(deferredInput, 14),
-    [deferredInput]
+  /** Topic chips only before the user sends or picks a topic; after that, chat only (+ Reset chat). */
+  const showTopicBrowser = useMemo(
+    () => !messages.some((m) => m.role === "user"),
+    [messages]
   )
+  const suggestedEntries = useMemo(() => {
+    if (!showTopicBrowser) return []
+    return filterFaqEntries(deferredInput, 14)
+  }, [deferredInput, showTopicBrowser])
 
   const scrollToBottom = useCallback(() => {
     const el = listRef.current
@@ -496,38 +501,47 @@ export function NestAssistant() {
               </div>
 
               <div className="space-y-2 border-t border-border pt-3">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                    {deferredInput.trim()
-                      ? "Matching topics"
-                      : "Browse topics"}
+                {showTopicBrowser ? (
+                  <>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                        {deferredInput.trim()
+                          ? "Matching topics"
+                          : "Browse topics"}
+                      </p>
+                      {deferredInput.trim() ? (
+                        <button
+                          type="button"
+                          className="text-[11px] text-primary hover:underline"
+                          onClick={() => setInput("")}
+                        >
+                          Clear filter
+                        </button>
+                      ) : null}
+                    </div>
+                    <div className="flex max-h-[72px] flex-wrap gap-1.5 overflow-y-auto pr-0.5">
+                      {suggestedEntries.map((e) => (
+                        <Button
+                          key={e.id}
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          className="h-auto max-w-full truncate rounded-full px-2.5 py-1 text-xs font-normal"
+                          disabled={isTyping}
+                          title={`${e.category}: ${e.title}`}
+                          onClick={() => appendSuggestion(e)}
+                        >
+                          {e.title}
+                        </Button>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground">
+                    Use <span className="font-medium text-foreground">Reset chat</span>{" "}
+                    above to see topic suggestions again.
                   </p>
-                  {deferredInput.trim() ? (
-                    <button
-                      type="button"
-                      className="text-[11px] text-primary hover:underline"
-                      onClick={() => setInput("")}
-                    >
-                      Clear filter
-                    </button>
-                  ) : null}
-                </div>
-                <div className="flex max-h-[72px] flex-wrap gap-1.5 overflow-y-auto pr-0.5">
-                  {suggestedEntries.map((e) => (
-                    <Button
-                      key={e.id}
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      className="h-auto max-w-full truncate rounded-full px-2.5 py-1 text-xs font-normal"
-                      disabled={isTyping}
-                      title={`${e.category}: ${e.title}`}
-                      onClick={() => appendSuggestion(e)}
-                    >
-                      {e.title}
-                    </Button>
-                  ))}
-                </div>
+                )}
                 <form
                   className="flex gap-2"
                   onSubmit={(ev) => {
@@ -542,7 +556,11 @@ export function NestAssistant() {
                     id={inputId}
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    placeholder="e.g. Can grandparents send SOL?"
+                    placeholder={
+                      showTopicBrowser
+                        ? "Type to filter topics, or ask a question…"
+                        : "Ask a follow-up…"
+                    }
                     className="flex-1"
                     autoComplete="off"
                     disabled={isTyping}
