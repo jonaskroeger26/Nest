@@ -11,6 +11,7 @@ import { getKidsVaultProgramId } from "@/lib/solana-config"
 const VAULT_SEED = "vault"
 const TOKEN_VAULT_SEED = "token_vault"
 const AUTO_SAVE_SEED = "auto_save"
+const PROTOCOL_FEES_SEED = "protocol_fees"
 
 // Anchor account sizes:
 // SOL vault:   8 (disc) + 32 (creator) + 32 (beneficiary) + 8 (unlock_ts) + 1 (bump) = 81
@@ -114,6 +115,99 @@ export function deriveTokenVaultPDA(
     getKidsVaultProgramId()
   )
   return pda
+}
+
+/** Global protocol fee config PDA (treasury + bps). Created with `init_protocol_fees`. */
+export function deriveProtocolFeesPDA(): PublicKey {
+  const [pda] = PublicKey.findProgramAddressSync(
+    [Buffer.from(PROTOCOL_FEES_SEED, "utf8")],
+    getKidsVaultProgramId()
+  )
+  return pda
+}
+
+export type ProtocolFeesConfig = {
+  admin: PublicKey
+  treasury: PublicKey
+  feeBps: number
+}
+
+/** Read on-chain protocol fee settings; `null` if not initialized (locks/withdraws will fail until init). */
+export async function fetchProtocolFeesConfig(
+  connection: Connection
+): Promise<ProtocolFeesConfig | null> {
+  const pk = deriveProtocolFeesPDA()
+  const info = await connection.getAccountInfo(pk)
+  if (!info?.data || info.data.length < 75) return null
+  const d = info.data
+  const admin = new PublicKey(d.slice(8, 40))
+  const treasury = new PublicKey(d.slice(40, 72))
+  const feeBps = d.readUInt16LE(72)
+  return { admin, treasury, feeBps }
+}
+
+/** Match on-chain `split_protocol_fee`: fee = floor(amount * bps / 10000), net = amount - fee. */
+export function splitGrossLamportsWithFee(
+  grossLamports: bigint,
+  feeBps: number
+): { netLamports: bigint; feeLamports: bigint } {
+  if (feeBps <= 0 || grossLamports <= 0n) {
+    return { netLamports: grossLamports, feeLamports: 0n }
+  }
+  const fee = (grossLamports * BigInt(feeBps)) / 10_000n
+  const net = grossLamports - fee
+  return { netLamports: net, feeLamports: fee }
+}
+
+/** Admin one-shot: initialize `protocol_fees` PDA (run once per cluster after program upgrade). */
+export async function buildInitProtocolFeesInstruction(
+  admin: PublicKey,
+  treasury: PublicKey,
+  feeBps: number
+): Promise<TransactionInstruction> {
+  if (feeBps < 0 || feeBps > 1_000) {
+    throw new Error("fee_bps must be between 0 and 1000 (10%).")
+  }
+  const pda = deriveProtocolFeesPDA()
+  const disc = await instructionDiscriminator("init_protocol_fees")
+  const data = Buffer.alloc(8 + 32 + 2)
+  for (let i = 0; i < 8; i++) data[i] = disc[i]!
+  treasury.toBuffer().copy(data, 8)
+  data.writeUInt16LE(feeBps, 40)
+  return new TransactionInstruction({
+    programId: getKidsVaultProgramId(),
+    keys: [
+      { pubkey: pda, isSigner: false, isWritable: true },
+      { pubkey: admin, isSigner: true, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data,
+  })
+}
+
+/** Admin: update treasury / fee bps (same limits as init). */
+export async function buildSetProtocolFeesInstruction(
+  admin: PublicKey,
+  treasury: PublicKey,
+  feeBps: number
+): Promise<TransactionInstruction> {
+  if (feeBps < 0 || feeBps > 1_000) {
+    throw new Error("fee_bps must be between 0 and 1000 (10%).")
+  }
+  const pda = deriveProtocolFeesPDA()
+  const disc = await instructionDiscriminator("set_protocol_fees")
+  const data = Buffer.alloc(8 + 32 + 2)
+  for (let i = 0; i < 8; i++) data[i] = disc[i]!
+  treasury.toBuffer().copy(data, 8)
+  data.writeUInt16LE(feeBps, 40)
+  return new TransactionInstruction({
+    programId: getKidsVaultProgramId(),
+    keys: [
+      { pubkey: pda, isSigner: false, isWritable: true },
+      { pubkey: admin, isSigner: true, isWritable: false },
+    ],
+    data,
+  })
 }
 
 /** PDA holding escrow SOL; relayer moves `amount_per_period` to the SOL vault on schedule. */
@@ -729,27 +823,56 @@ export async function createSolVault(
     if (!storedCreator.equals(creator) || !storedBen.equals(beneficiary)) {
       throw new Error("Vault address conflict. Use a different child wallet.")
     }
-    tx = new Transaction().add(
-      SystemProgram.transfer({
-        fromPubkey: creator,
-        toPubkey: vaultPDA,
-        lamports: amountLamports,
-      })
-    )
+    const protocol = await fetchProtocolFeesConfig(connection)
+    if (!protocol) {
+      throw new Error(
+        "Protocol fee config is missing on this cluster. Deploy the latest kids-vault program and run init_protocol_fees once (see Nest README “Protocol fees”)."
+      )
+    }
+    const depDisc = await instructionDiscriminator("deposit_sol_vault")
+    const depData = new ArrayBuffer(8 + 8)
+    const depView = new DataView(depData)
+    for (let i = 0; i < 8; i++) depView.setUint8(i, depDisc[i]!)
+    depView.setBigUint64(8, BigInt(amountLamports), true)
+    const protocolPda = deriveProtocolFeesPDA()
+    const depIx = new TransactionInstruction({
+      programId: programId,
+      keys: [
+        { pubkey: protocolPda, isSigner: false, isWritable: false },
+        { pubkey: protocol.treasury, isSigner: false, isWritable: true },
+        { pubkey: vaultPDA, isSigner: false, isWritable: true },
+        { pubkey: creator, isSigner: true, isWritable: true },
+        { pubkey: beneficiary, isSigner: false, isWritable: false },
+        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      ],
+      data: Buffer.from(depData),
+    })
+    tx = new Transaction()
+      .add(ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }))
+      .add(depIx)
   } else if (existing) {
     throw new Error(
       "That vault address is already in use. Try a different child wallet."
     )
   } else {
+    const protocol = await fetchProtocolFeesConfig(connection)
+    if (!protocol) {
+      throw new Error(
+        "Protocol fee config is missing on this cluster. Deploy the latest kids-vault program and run init_protocol_fees once (see Nest README “Protocol fees”)."
+      )
+    }
     const disc = await instructionDiscriminator("create_vault")
     const data = new ArrayBuffer(8 + 8 + 8)
     const view = new DataView(data)
     for (let i = 0; i < 8; i++) view.setUint8(i, disc[i])
     view.setBigUint64(8, BigInt(amountLamports), true)
     view.setBigInt64(16, BigInt(unlockTimestamp), true)
+    const protocolPda = deriveProtocolFeesPDA()
     const ix = new TransactionInstruction({
       programId: programId,
       keys: [
+        { pubkey: protocolPda, isSigner: false, isWritable: false },
+        { pubkey: protocol.treasury, isSigner: false, isWritable: true },
         { pubkey: vaultPDA, isSigner: false, isWritable: true },
         { pubkey: creator, isSigner: true, isWritable: true },
         { pubkey: beneficiary, isSigner: false, isWritable: false },
@@ -793,13 +916,22 @@ export async function withdrawSolVault(
   beneficiary: PublicKey,
   signTransaction: (tx: Transaction) => Promise<Transaction>
 ): Promise<string> {
+  const protocol = await fetchProtocolFeesConfig(connection)
+  if (!protocol) {
+    throw new Error(
+      "Protocol fee config is missing on this cluster. Run init_protocol_fees once (Nest README)."
+    )
+  }
   const vaultPDA = deriveVaultPDA(creator, beneficiary)
   const disc = await instructionDiscriminator("withdraw")
   const data = Buffer.alloc(8)
-  for (let i = 0; i < 8; i++) data[i] = disc[i]
+  for (let i = 0; i < 8; i++) data[i] = disc[i]!
+  const protocolPda = deriveProtocolFeesPDA()
   const ix = new TransactionInstruction({
     programId: getKidsVaultProgramId(),
     keys: [
+      { pubkey: protocolPda, isSigner: false, isWritable: false },
+      { pubkey: protocol.treasury, isSigner: false, isWritable: true },
       { pubkey: vaultPDA, isSigner: false, isWritable: true },
       { pubkey: beneficiary, isSigner: true, isWritable: true },
     ],
@@ -1176,14 +1308,24 @@ export async function cancelAutoSaveSchedule(
 
 /** Build `execute_auto_save` for the Nest relayer (server-side). */
 export async function buildExecuteAutoSaveInstruction(
+  connection: Connection,
   schedulePda: PublicKey,
   vaultPda: PublicKey,
   relayer: PublicKey
 ): Promise<TransactionInstruction> {
+  const protocol = await fetchProtocolFeesConfig(connection)
+  if (!protocol) {
+    throw new Error(
+      "Protocol fee config missing — run init_protocol_fees on this cluster (Nest README)."
+    )
+  }
   const disc = await instructionDiscriminator("execute_auto_save")
+  const protocolPda = deriveProtocolFeesPDA()
   return new TransactionInstruction({
     programId: getKidsVaultProgramId(),
     keys: [
+      { pubkey: protocolPda, isSigner: false, isWritable: false },
+      { pubkey: protocol.treasury, isSigner: false, isWritable: true },
       { pubkey: schedulePda, isSigner: false, isWritable: true },
       { pubkey: vaultPda, isSigner: false, isWritable: true },
       { pubkey: relayer, isSigner: true, isWritable: false },

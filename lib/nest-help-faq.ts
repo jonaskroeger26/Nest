@@ -245,10 +245,14 @@ export const NEST_FAQ_ENTRIES: NestFaqEntry[] = [
       "transaction",
       "expensive",
       "cheap",
+      "protocol",
+      "treasury",
+      "bps",
+      "percent",
     ],
     relatedIds: ["testnet", "msol"],
     answer:
-      "Solana charges **small network fees** per signature. New accounts (vaults, schedules) need **rent-exempt** SOL locked in the account.\n\nNest doesn’t add a typical **platform fee** in the contract by default—always confirm the **program ID** and cluster you’re using.",
+      "**Network:** Solana charges small **signature fees**. New accounts need **rent-exempt** lamports.\n\n**Protocol (optional):** When enabled on-chain, the program can take a **basis-point fee** on `create_vault`, `deposit_sol_vault` (top-ups through Nest), `withdraw`, and `execute_auto_save`. The Lock dialog estimates it. **Raw** transfers to the vault PDA outside the app skip the protocol fee. See README **Protocol fees**.",
   },
   {
     id: "lost-wallet",

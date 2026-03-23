@@ -16,7 +16,14 @@ import { useWallet } from "@/hooks/use-wallet"
 import { useChildren, type Child, type Goal } from "@/context/children-context"
 import { useActions } from "@/context/actions-context"
 import { useMarinadeApy } from "@/hooks/use-marinade-apy"
-import { getConnection, createSolVault, createMsolVault } from "@/lib/solana-vault"
+import {
+  getConnection,
+  createSolVault,
+  createMsolVault,
+  fetchProtocolFeesConfig,
+  splitGrossLamportsWithFee,
+  type ProtocolFeesConfig,
+} from "@/lib/solana-vault"
 import { signTransactionWithBrowserWallet } from "@/lib/wallet-sign"
 import { solanaTxUrl } from "@/lib/solana-explorer"
 import { isMainnetVaults } from "@/lib/solana-config"
@@ -102,6 +109,9 @@ export function AddSolDialog({
   const [lockAsMsol, setLockAsMsol] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  const [protocolFees, setProtocolFees] = useState<
+    ProtocolFeesConfig | null | undefined
+  >(undefined)
 
   const selected = useMemo(() => {
     if (typeof selectedIdx !== "number" || selectedIdx < 0) return null
@@ -114,6 +124,22 @@ export function AddSolDialog({
     if (!selected || !selectedGoalKey) return null
     return resolveGoalFromKey(selected, selectedGoalKey)
   }, [selected, selectedGoalKey])
+
+  const solFeePreview = useMemo(() => {
+    if (lockAsMsol || !protocolFees || protocolFees.feeBps <= 0) return null
+    const n = parseFloat(amount.replace(",", "."))
+    if (!Number.isFinite(n) || n <= 0) return null
+    const gross = BigInt(Math.floor(n * 1e9))
+    const { netLamports, feeLamports } = splitGrossLamportsWithFee(
+      gross,
+      protocolFees.feeBps
+    )
+    return {
+      pct: protocolFees.feeBps / 100,
+      feeSol: Number(feeLamports) / 1e9,
+      netSol: Number(netLamports) / 1e9,
+    }
+  }, [amount, lockAsMsol, protocolFees])
 
   useEffect(() => {
     if (!open) return
@@ -131,6 +157,23 @@ export function AddSolDialog({
       setSelectedIdx("")
     }
   }, [open, lockForChildBeneficiary, lockGoalRef, children])
+
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    void (async () => {
+      try {
+        const conn = await getConnection()
+        const p = await fetchProtocolFeesConfig(conn)
+        if (!cancelled) setProtocolFees(p)
+      } catch {
+        if (!cancelled) setProtocolFees(null)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [open])
 
   useEffect(() => {
     if (!open || !lockForChildBeneficiary || children.length === 0) return
@@ -309,6 +352,16 @@ export function AddSolDialog({
                 Testnet: use test SOL; Phantom on Testnet.
               </span>
             )}
+            {!lockAsMsol && protocolFees === null && (
+              <span className="block text-amber-800 dark:text-amber-200">
+                Protocol fee config not found on this cluster — new SOL vault
+                creation may fail until an admin runs{" "}
+                <code className="rounded bg-muted px-1 text-xs">
+                  init_protocol_fees
+                </code>{" "}
+                (see README).
+              </span>
+            )}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -398,6 +451,14 @@ export function AddSolDialog({
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
             />
+            {solFeePreview ? (
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                Protocol fee ({solFeePreview.pct}%): ~
+                {solFeePreview.feeSol.toFixed(6)} SOL to treasury · ~{" "}
+                {solFeePreview.netSol.toFixed(6)} SOL net to the vault (first
+                lock and top-ups both go through the program).
+              </p>
+            ) : null}
           </div>
           <div className="space-y-2">
             {selectedGoal ? (

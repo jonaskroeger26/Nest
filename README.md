@@ -8,11 +8,40 @@
 - **Floating help** (bottom-right on every page): **Ask** = FAQ assistant with **synonym expansion**, ranked matching, **related topics**, “you might mean” when unsure, **typing delay**, **reset chat**, copy answer, and live **topic search** as you type. No paid AI API. **Tour** = short animated walkthrough (replay anytime).
 - The tour auto-opens once on first **Dashboard** visit until the user closes it, skips, or finishes (`localStorage` key `nest_auto_tour_dismissed_v1`). From the marketing page, use **Tour** in the top bar or the help button → **Tour** tab.
 
+### Protocol fees (testnet / mainnet)
+
+The kids-vault program can charge a **basis-point fee** on:
+
+- **`create_vault`** — first SOL lock for a parent+child pair; fee from gross, **remainder** to the vault.
+- **`deposit_sol_vault`** — every **additional** SOL lock (top-up) through Nest uses this instruction; same fee split as `create_vault`.
+- **`withdraw`** — fee taken from vault balance before the rest goes to the child.
+- **`execute_auto_save`** — fee taken from each period’s transfer; the **remainder** goes to the vault.
+
+**Bypass:** Sending SOL to the vault PDA with a **raw wallet transfer** (outside Nest) still skips the program fee — only recommended for advanced users who accept no in-app attribution.
+
+1. **Deploy** the upgraded program (`anchor build -p kids_vault` → `anchor upgrade …` on your cluster).
+2. **Initialize once** (per cluster) with your treasury wallet and `fee_bps` (100 = 1%, max 1000 = 10%):
+
+   ```bash
+   # Must run from the Nest app root (this folder), not your home directory.
+   cd /path/to/your/repo/fatherhood
+
+   SOLANA_RPC_URL=https://api.testnet.solana.com \
+   NEST_INIT_ADMIN_KEYPAIR=~/.config/solana/id.json \
+   npx tsx scripts/init-protocol-fees.ts <YOUR_TREASURY_PUBKEY> 50
+   ```
+
+   `50` = **0.5%** for testing. Use `0` to disable fees but still require the config account.
+
+3. Confirm: the Lock dialog shows an estimated fee; auto-save cron uses the same on-chain config.
+
+To change treasury or bps later, use the on-chain `set_protocol_fees` instruction (admin signer = pubkey stored at init) or add a small admin script mirroring `buildInitProtocolFeesInstruction` for `set_protocol_fees`.
+
 ### On-chain identity & locks
 
 - **Parent name:** signed tx `set_parent_display_name` (welcome flow or Settings → “Save name on-chain”).
 - **Each child:** signed tx `register_child` — stores child display name + **child wallet** on-chain (one PDA per parent + child wallet).
-- **Each SOL lock:** `create_vault` (or top-up transfer) — toast links to Solscan.
+- **Each SOL lock:** `create_vault` (first time) or `deposit_sol_vault` (top-up via Nest) — toast links to Solscan.
 - **Withdraw:** only the **child’s wallet** can sign after unlock (enforced in the program).
 
 **If Nest shows “program outdated” / `register_child` fails with 0x65** while Phantom + Vercel are already on **testnet**: the **on-chain bytecode** at `3be5xt…` is still the **old build** (smaller `.so`, no `register_child`). Your env vars are not the bug.

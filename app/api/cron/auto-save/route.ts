@@ -117,6 +117,7 @@ async function runAutoSaveCron(req: Request) {
       const benPk = new PublicKey(parsed.beneficiary)
       const vaultPda = deriveVaultPDA(parentPk, benPk)
       const ix = await buildExecuteAutoSaveInstruction(
+        connection,
         pubkey,
         vaultPda,
         relayerKp.publicKey
