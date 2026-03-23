@@ -1,16 +1,22 @@
 import { NextResponse } from "next/server"
+import { enforceApiRateLimit } from "@/lib/api-rate-limit"
 import {
   getServerSolanaCluster,
   getServerSolanaRpcUrl,
 } from "@/lib/server-solana-env"
 
 export const dynamic = "force-dynamic"
+/** Rate limiting uses Upstash; Node runtime sees `UPSTASH_*` on Vercel reliably. */
+export const runtime = "nodejs"
 
 /**
  * Browser-safe RPC URL (reads server env). Used by `getConnection()` in
  * `lib/solana-vault.ts` so Helius / private keys stay off the client bundle.
  */
-export async function GET() {
+export async function GET(req: Request) {
+  const limited = await enforceApiRateLimit(req, "rpc")
+  if (!limited.ok) return limited.response
+
   const cluster = getServerSolanaCluster()
 
   // Public mainnet RPC often returns 403 from browsers; require an explicit URL.
@@ -30,5 +36,5 @@ export async function GET() {
   }
 
   const url = getServerSolanaRpcUrl()
-  return NextResponse.json({ url })
+  return NextResponse.json({ url }, { headers: limited.headers })
 }

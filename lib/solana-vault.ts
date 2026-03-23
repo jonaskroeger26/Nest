@@ -601,7 +601,17 @@ let cachedRpcUrl: string | null = null
 export async function getConnection(): Promise<Connection> {
   if (cachedRpcUrl) return new Connection(cachedRpcUrl, "confirmed")
   const res = await fetch("/api/solana-rpc")
-  const data = (await res.json()) as { url?: string; error?: string }
+  const data = (await res.json()) as {
+    url?: string
+    error?: string
+    retryAfterSec?: number
+  }
+  if (res.status === 429) {
+    const s = data.retryAfterSec ?? 60
+    throw new Error(
+      `Too many requests to the RPC config endpoint. Try again in about ${s}s.`
+    )
+  }
   if (!res.ok || data.error) {
     throw new Error(
       data.error ??

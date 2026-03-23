@@ -8,6 +8,39 @@
 - **Floating help** (bottom-right on every page): **Ask** = FAQ assistant with **synonym expansion**, ranked matching, **related topics**, “you might mean” when unsure, **typing delay**, **reset chat**, copy answer, and live **topic search** as you type. No paid AI API. **Tour** = short animated walkthrough (replay anytime).
 - The tour auto-opens once on first **Dashboard** visit until the user closes it, skips, or finishes (`localStorage` key `nest_auto_tour_dismissed_v1`). From the marketing page, use **Tour** in the top bar or the help button → **Tour** tab.
 
+### API rate limiting
+
+**Route handlers** (`/api/solana-rpc`, `/api/admin/nestdev`) call **Upstash Redis** using the **Node.js** runtime (`runtime = "nodejs"`). That way **`UPSTASH_*` env vars on Vercel are always visible** (Edge Middleware often does not see the same secrets, so limits would silently not run).
+
+| Route pattern        | Default limit              | Notes                                      |
+| -------------------- | -------------------------- | ------------------------------------------ |
+| `/api/admin/*`       | **30** requests / min / IP | Expensive `getProgramAccounts` scans       |
+| `/api/solana-rpc`    | **120** requests / min / IP| Called when the app opens an RPC connection |
+| `/api/cron/*`        | _not_ limited              | Use `Authorization: Bearer` secret instead |
+
+1. Create a free Redis database at [Upstash](https://console.upstash.com/).
+2. Add **`UPSTASH_REDIS_REST_URL`** and **`UPSTASH_REDIS_REST_TOKEN`** to Vercel (and `.env.local` locally).
+3. Optional: **`NEST_RATE_LIMIT_ADMIN_PER_MINUTE`**, **`NEST_RATE_LIMIT_RPC_PER_MINUTE`** (integers).
+4. Optional: **`NEST_RATE_LIMIT_DISABLED=true`** to turn limits off (e.g. local debugging).
+
+If Upstash env vars are **missing**, routes skip limiting so the app still runs.
+
+**Load-test (your own deployment only — not other people’s sites):**
+
+Use the **hostname that actually resolves in DNS** (from Vercel → Deployments → open the deployment → copy URL, usually `*.vercel.app`). A short brand name shown in the UI may **not** be a real public hostname.
+
+```bash
+cd fatherhood
+npx tsx scripts/stress-test-rate-limit.ts https://your-app.vercel.app
+```
+
+The script prints a **probe** line first: if you **don’t** see `X-RateLimit-Limit`, Upstash isn’t active on that deployment (wrong env / Preview vs Production / **old deploy before route-handler limits**).
+
+- Defaults: **350** requests, **80** concurrent (enough to exceed **120/min** on `/api/solana-rpc` in one burst).
+- Heavier: `npx tsx scripts/stress-test-rate-limit.ts your-app.vercel.app 600 120`
+- Admin route (limit **30/min**):  
+  `NEST_STRESS_PATH=/api/admin/nestdev npx tsx scripts/stress-test-rate-limit.ts your-app.vercel.app 60 30`
+
 ### Protocol fees (testnet / mainnet)
 
 The kids-vault program can charge a **basis-point fee** on:

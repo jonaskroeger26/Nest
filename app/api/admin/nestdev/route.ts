@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server"
 import { Connection, PublicKey } from "@solana/web3.js"
+import { enforceApiRateLimit } from "@/lib/api-rate-limit"
 import { decodeDisplayName32 } from "@/lib/solana-vault"
 import { getKidsVaultProgramId } from "@/lib/solana-config"
 import { getServerSolanaCluster, getServerSolanaRpcUrl } from "@/lib/server-solana-env"
+
+export const runtime = "nodejs"
 
 const COOKIE_NAME = "nest_admin"
 
@@ -126,12 +129,15 @@ export async function GET(req: Request) {
     (a, b) => b.children.length - a.children.length
   )
 
-  return NextResponse.json({
-    ok: true,
-    cluster: getServerSolanaCluster(),
-    rpcUrl: getServerSolanaRpcUrl(),
-    programId: programId.toBase58(),
-    parents: rows,
-  })
+  return NextResponse.json(
+    {
+      ok: true,
+      cluster: getServerSolanaCluster(),
+      rpcUrl: getServerSolanaRpcUrl(),
+      programId: programId.toBase58(),
+      parents: rows,
+    },
+    { headers: limited.headers }
+  )
 }
 
