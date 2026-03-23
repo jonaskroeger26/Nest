@@ -27,6 +27,10 @@ import {
 import { signTransactionWithBrowserWallet } from "@/lib/wallet-sign"
 import { solanaTxUrl } from "@/lib/solana-explorer"
 import { isMainnetVaults } from "@/lib/solana-config"
+import {
+  notifyRpcRateLimitedIfNeeded,
+  useRpcAvailabilityOptional,
+} from "@/components/rpc-availability-gate"
 import { useVaultBalances } from "@/context/vault-balances-context"
 import { useSolPrice } from "@/hooks/use-sol-price"
 import { PublicKey } from "@solana/web3.js"
@@ -100,6 +104,7 @@ export function AddSolDialog({
   const { children, updateChildTotal, creditGoalLock } = useChildren()
   const { lockForChildBeneficiary, lockGoalRef } = useActions()
   const { refresh: refreshVaults } = useVaultBalances()
+  const rpcAvail = useRpcAvailabilityOptional()
   const { usdPerSol } = useSolPrice()
   const marinadeApy = useMarinadeApy()
   const [selectedIdx, setSelectedIdx] = useState<number | "">("")
@@ -321,6 +326,9 @@ export function AddSolDialog({
       await refreshVaults()
       onClose()
     } catch (err) {
+      if (notifyRpcRateLimitedIfNeeded(err, rpcAvail?.reportRateLimited)) {
+        return
+      }
       setError((err as Error).message?.slice(0, 80) ?? "Transaction failed")
     } finally {
       setLoading(false)

@@ -21,6 +21,10 @@ import {
 import { solanaAccountUrl } from "@/lib/solana-explorer"
 import { getSolanaCluster } from "@/lib/solana-config"
 import { VaultGiftQrPanel } from "@/components/vault-gift-qr"
+import {
+  notifyRpcRateLimitedIfNeeded,
+  useRpcAvailabilityOptional,
+} from "@/components/rpc-availability-gate"
 
 type ChildGiftRow = {
   name: string
@@ -68,6 +72,7 @@ export function GiftDialog({
   onClose: () => void
 }) {
   const { address, connect, connected } = useWallet()
+  const rpcAvail = useRpcAvailabilityOptional()
   const { children } = useChildren()
   const [rows, setRows] = useState<ChildGiftRow[]>([])
   const [loading, setLoading] = useState(false)
@@ -99,12 +104,16 @@ export function GiftDialog({
         })
       }
       setRows(out)
-    } catch {
+    } catch (e) {
+      if (notifyRpcRateLimitedIfNeeded(e, rpcAvail?.reportRateLimited)) {
+        setRows([])
+        return
+      }
       setRows([])
     } finally {
       setLoading(false)
     }
-  }, [address, children])
+  }, [address, children, rpcAvail?.reportRateLimited])
 
   useEffect(() => {
     if (!open) return

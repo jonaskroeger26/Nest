@@ -18,6 +18,10 @@ import { GiftDialog } from "@/components/dialogs/gift-dialog"
 import { AddGoalDialog } from "@/components/dialogs/add-goal-dialog"
 import { NestAssistant } from "@/components/nest-assistant"
 import {
+  notifyRpcRateLimitedIfNeeded,
+  useRpcAvailability,
+} from "@/components/rpc-availability-gate"
+import {
   getConnection,
   fetchParentDisplayNameFromChain,
   fetchRegisteredChildrenFromChain,
@@ -130,6 +134,7 @@ function ProfileGate({ children }: { children: React.ReactNode }) {
           setChildren(attachStoredGoals(address, base))
         }
       } catch (e) {
+        if (notifyRpcRateLimitedIfNeeded(e, reportRateLimited)) return
         console.error("Failed to load profile", e)
       } finally {
         if (!cancelled) {

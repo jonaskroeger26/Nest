@@ -31,6 +31,10 @@ import { signTransactionWithBrowserWallet } from "@/lib/wallet-sign"
 import { solanaTxUrl, solanaAccountUrl } from "@/lib/solana-explorer"
 import { CalendarClock, RefreshCw, PiggyBank, Lock } from "lucide-react"
 import { getSolanaCluster } from "@/lib/solana-config"
+import {
+  notifyRpcRateLimitedIfNeeded,
+  useRpcAvailabilityOptional,
+} from "@/components/rpc-availability-gate"
 
 const AUTO_SAVE_KEY = "nest_autosave_schedules"
 
@@ -66,6 +70,7 @@ export function AutoSaveDialog({
   onClose: () => void
 }) {
   const { children } = useChildren()
+  const rpcAvail = useRpcAvailabilityOptional()
   const { address, connect, connected } = useWallet()
   const { autoSaveBeneficiary, openAddSolForChild } = useActions()
   const relayerPk = useMemo(() => relayerPubkeyFromEnv(), [])
@@ -106,13 +111,17 @@ export function AutoSaveDialog({
         new PublicKey(beneficiaryStr)
       )
       setExistingSchedule(s)
-    } catch {
+    } catch (e) {
+      if (notifyRpcRateLimitedIfNeeded(e, rpcAvail?.reportRateLimited)) {
+        setExistingSchedule(null)
+        return
+      }
       setExistingSchedule(null)
     } finally {
       setScheduleLoading(false)
       setScheduleChecked(true)
     }
-  }, [address, beneficiaryStr])
+  }, [address, beneficiaryStr, rpcAvail?.reportRateLimited])
 
   useEffect(() => {
     if (!open) return
@@ -148,14 +157,20 @@ export function AutoSaveDialog({
           new PublicKey(beneficiaryStr)
         )
         if (!cancelled) setUnlockTs(u)
-      } catch {
+      } catch (e) {
+        if (
+          !cancelled &&
+          notifyRpcRateLimitedIfNeeded(e, rpcAvail?.reportRateLimited)
+        ) {
+          return
+        }
         if (!cancelled) setUnlockTs(null)
       }
     })()
     return () => {
       cancelled = true
     }
-  }, [open, address, beneficiaryStr])
+  }, [open, address, beneficiaryStr, rpcAvail?.reportRateLimited])
 
   useEffect(() => {
     if (!open || !address || !beneficiaryStr) {
@@ -243,6 +258,9 @@ export function AutoSaveDialog({
       await loadSchedule()
       onClose()
     } catch (err) {
+      if (notifyRpcRateLimitedIfNeeded(err, rpcAvail?.reportRateLimited)) {
+        return
+      }
       const msg = (err as Error)?.message ?? "Transaction failed"
       if (/already in use|0x0|custom program error/i.test(msg)) {
         toast.error(
@@ -317,7 +335,9 @@ export function AutoSaveDialog({
       )
       await loadSchedule()
     } catch (err) {
-      toast.error((err as Error)?.message ?? "Cancel failed")
+      if (!notifyRpcRateLimitedIfNeeded(err, rpcAvail?.reportRateLimited)) {
+        toast.error((err as Error)?.message ?? "Cancel failed")
+      }
     } finally {
       setCancelLoading(false)
     }

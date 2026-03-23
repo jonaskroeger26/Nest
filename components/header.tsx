@@ -39,6 +39,10 @@ import { Label } from "@/components/ui/label"
 import { PublicKey } from "@solana/web3.js"
 import { toast } from "sonner"
 import {
+  notifyRpcRateLimitedIfNeeded,
+  useRpcAvailabilityOptional,
+} from "@/components/rpc-availability-gate"
+import {
   getConnection,
   setParentDisplayNameOnChain,
 } from "@/lib/solana-vault"
@@ -115,6 +119,7 @@ async function copyToClipboard(text: string, label: string) {
 }
 
 export function Header() {
+  const rpcAvail = useRpcAvailabilityOptional()
   const { address, isConnecting, connect, disconnect, connected } = useWallet()
   const { userName, setUserName, userAvatar, setUserAvatar } = useUser()
   const [showConnectName, setShowConnectName] = useState(false)
@@ -214,6 +219,9 @@ export function Header() {
           </span>
         )
       } catch (e) {
+        if (notifyRpcRateLimitedIfNeeded(e, rpcAvail?.reportRateLimited)) {
+          throw e
+        }
         toast.error(
           (e as Error).message?.slice(0, 100) ?? "Could not save name on-chain"
         )
@@ -282,7 +290,9 @@ export function Header() {
       )
       setShowSettings(false)
     } catch (e) {
-      toast.error((e as Error).message?.slice(0, 100) ?? "Failed")
+      if (!notifyRpcRateLimitedIfNeeded(e, rpcAvail?.reportRateLimited)) {
+        toast.error((e as Error).message?.slice(0, 100) ?? "Failed")
+      }
     } finally {
       setSavingNameOnChain(false)
     }

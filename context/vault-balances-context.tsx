@@ -12,6 +12,10 @@ import { PublicKey } from "@solana/web3.js"
 import { useWallet } from "@/hooks/use-wallet"
 import { useChildren } from "@/context/children-context"
 import {
+  notifyRpcRateLimitedIfNeeded,
+  useRpcAvailabilityOptional,
+} from "@/components/rpc-availability-gate"
+import {
   getConnection,
   getVaultsByCreator,
   getTokenVaultsByCreator,
@@ -46,6 +50,7 @@ async function withRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
 }
 
 export function VaultBalancesProvider({ children }: { children: React.ReactNode }) {
+  const rpcAvail = useRpcAvailabilityOptional()
   const { address } = useWallet()
   const { children: childProfiles } = useChildren()
   const [byBeneficiarySol, setByBeneficiarySol] = useState<Record<string, number>>({})
@@ -145,9 +150,15 @@ export function VaultBalancesProvider({ children }: { children: React.ReactNode 
       setByBeneficiarySol(map)
       setTotalSol(sum)
     } catch (e) {
-      setError((e as Error).message ?? "Failed to load vaults")
-      setByBeneficiarySol({})
-      setTotalSol(0)
+      if (notifyRpcRateLimitedIfNeeded(e, rpcAvail?.reportRateLimited)) {
+        setError(null)
+        setByBeneficiarySol({})
+        setTotalSol(0)
+      } else {
+        setError((e as Error).message ?? "Failed to load vaults")
+        setByBeneficiarySol({})
+        setTotalSol(0)
+      }
     } finally {
       setLoading(false)
     }

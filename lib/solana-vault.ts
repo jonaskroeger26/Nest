@@ -598,6 +598,39 @@ function toUserMessage(e: unknown): string | null {
 // RPC connection (via /api/solana-rpc — reads server .env.local)
 // ---------------------------------------------------------------------------
 let cachedRpcUrl: string | null = null
+
+/** Thrown when `/api/solana-rpc` returns 429 (Upstash rate limit). */
+export class RpcConfigRateLimitedError extends Error {
+  override readonly name = "RpcConfigRateLimitedError"
+  constructor(public readonly retryAfterSec: number) {
+    super(
+      `Too many requests to the RPC config endpoint. Try again in about ${retryAfterSec}s.`
+    )
+  }
+}
+
+export function isRpcConfigRateLimited(
+  e: unknown
+): e is RpcConfigRateLimitedError {
+  return e instanceof RpcConfigRateLimitedError
+}
+
+/** After a successful `/api/solana-rpc` fetch elsewhere (e.g. root gate), skip duplicate calls. */
+export function primeRpcUrlCache(rpcUrl: string): void {
+  try {
+    const u = new URL(rpcUrl)
+    if (u.protocol === "http:" || u.protocol === "https:") {
+      cachedRpcUrl = rpcUrl
+    }
+  } catch {
+    /* ignore invalid */
+  }
+}
+
+export function clearCachedRpcUrl(): void {
+  cachedRpcUrl = null
+}
+
 export async function getConnection(): Promise<Connection> {
   if (cachedRpcUrl) return new Connection(cachedRpcUrl, "confirmed")
   const res = await fetch("/api/solana-rpc")
@@ -608,9 +641,7 @@ export async function getConnection(): Promise<Connection> {
   }
   if (res.status === 429) {
     const s = data.retryAfterSec ?? 60
-    throw new Error(
-      `Too many requests to the RPC config endpoint. Try again in about ${s}s.`
-    )
+    throw new RpcConfigRateLimitedError(s)
   }
   if (!res.ok || data.error) {
     throw new Error(
