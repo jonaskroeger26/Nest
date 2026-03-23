@@ -13,6 +13,7 @@ import {
   type PortfolioSnapshot,
 } from "@/hooks/use-portfolio-history"
 import { format } from "date-fns"
+import { TrendingDown, TrendingUp } from "lucide-react"
 import { parseGoalUnlockDate } from "@/lib/goal-dates"
 import {
   Area,
@@ -142,6 +143,23 @@ function formatTooltipUsd(n: number) {
   return `$${n.toFixed(2)}`
 }
 
+/** Tight axis labels (CMC-style compact). */
+function formatAxisUsd(n: number) {
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1000) return `$${(n / 1000).toFixed(1)}k`
+  return `$${n.toFixed(0)}`
+}
+
+/** Hero number — full currency formatting like major price sites. */
+function formatHeroUsd(n: number) {
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: n >= 10_000 ? 0 : 2,
+  }).format(n)
+}
+
 export function GrowthChart({
   childrenOverride,
 }: {
@@ -264,6 +282,19 @@ export function GrowthChart({
     }
   }, [viewStart, viewEnd])
 
+  /** Period high / low in view (CoinMarketCap-style context). */
+  const rangeHighLow = useMemo(() => {
+    if (chartData.length === 0) return null
+    let lo = chartData[0]!.usd
+    let hi = lo
+    for (const d of chartData) {
+      if (d.usd < lo) lo = d.usd
+      if (d.usd > hi) hi = d.usd
+    }
+    if (hi <= 0 && lo <= 0) return null
+    return { lo, hi }
+  }, [chartData])
+
   if (children.length === 0) {
     return (
       <Card className="overflow-hidden rounded-2xl border border-[#D4ECD9]/80 bg-card shadow-sm dark:border-emerald-900/40">
@@ -279,31 +310,50 @@ export function GrowthChart({
     )
   }
 
+  const rangeLabel =
+    range === "1d"
+      ? "24H"
+      : range === "7d"
+        ? "7D"
+        : range === "30d"
+          ? "30D"
+          : "ALL"
+
   return (
     <Card className="overflow-hidden rounded-2xl border border-[#D4ECD9]/80 bg-card shadow-sm dark:border-emerald-900/40">
-      <CardContent className="space-y-6 p-6">
-        {/* Hero — USD value + range change (CMC / Binance style) */}
-        <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Portfolio value
-            </p>
+      <CardContent className="space-y-5 p-5 sm:p-6">
+        {/* Hero — CMC-style: pair label, huge price, change chip */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                Portfolio · USD
+              </p>
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-40" />
+                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                </span>
+                Live
+              </span>
+            </div>
             {currentUsd != null ? (
               <>
-                <p className="text-3xl font-bold tabular-nums tracking-tight text-foreground sm:text-4xl">
-                  {formatTooltipUsd(currentUsd)}
+                <p className="mt-1 text-4xl font-semibold tabular-nums tracking-tight text-foreground sm:text-5xl">
+                  {formatHeroUsd(currentUsd)}
                 </p>
-                <p className="mt-0.5 text-sm tabular-nums text-muted-foreground">
-                  {totalSol.toFixed(4)} SOL
+                <p className="mt-1 text-sm tabular-nums text-muted-foreground">
+                  ≈ {totalSol.toFixed(4)} SOL locked
                   {usd != null ? (
-                    <span className="ml-2">
+                    <span className="text-muted-foreground/80">
+                      {" "}
                       · {solToUsdFormatted(1, usd)} / SOL
                     </span>
                   ) : null}
                 </p>
               </>
             ) : (
-              <p className="mt-1 text-lg text-muted-foreground">
+              <p className="mt-2 text-lg text-muted-foreground">
                 Loading price…
               </p>
             )}
@@ -311,62 +361,107 @@ export function GrowthChart({
           {rangeChange != null ? (
             <div
               className={
-                "rounded-xl px-4 py-2 text-right tabular-nums " +
+                "flex shrink-0 items-center gap-3 rounded-2xl border px-4 py-3 tabular-nums shadow-sm " +
                 (up
-                  ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
-                  : "bg-red-500/10 text-red-700 dark:text-red-400")
+                  ? "border-emerald-500/25 bg-emerald-500/[0.07] dark:border-emerald-500/20 dark:bg-emerald-500/10"
+                  : "border-red-500/25 bg-red-500/[0.07] dark:border-red-500/20 dark:bg-red-500/10")
               }
             >
-              <p className="text-xs font-medium text-muted-foreground">
-                {range === "1d"
-                  ? "24h"
-                  : range === "7d"
-                    ? "7d"
-                    : range === "30d"
-                      ? "30d"
-                      : "All time"}
-              </p>
-              <p className="text-xl font-semibold">
-                {formatPctChange(rangeChange)}
-              </p>
+              <div
+                className={
+                  "flex h-10 w-10 items-center justify-center rounded-xl " +
+                  (up ? "bg-emerald-500/20" : "bg-red-500/20")
+                }
+              >
+                {up ? (
+                  <TrendingUp className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                ) : (
+                  <TrendingDown className="h-5 w-5 text-red-600 dark:text-red-400" />
+                )}
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  {rangeLabel} change
+                </p>
+                <p
+                  className={
+                    "text-2xl font-bold leading-none " +
+                    (up
+                      ? "text-emerald-700 dark:text-emerald-400"
+                      : "text-red-700 dark:text-red-400")
+                  }
+                >
+                  {formatPctChange(rangeChange)}
+                </p>
+              </div>
             </div>
           ) : null}
         </div>
 
-        {/* Range tabs */}
-        <div className="flex flex-wrap gap-2">
-          {RANGE_TABS.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setRange(tab.id)}
-              className={
-                "rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors " +
-                (range === tab.id
-                  ? "bg-foreground text-background"
-                  : "bg-muted/80 text-muted-foreground hover:bg-muted")
-              }
-            >
-              {tab.label}
-            </button>
-          ))}
+        {/* Segmented range control (CMC-style) */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div
+            className="inline-flex rounded-xl border border-border/70 bg-muted/40 p-1 dark:bg-muted/25"
+            role="tablist"
+            aria-label="Chart range"
+          >
+            {RANGE_TABS.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={range === tab.id}
+                onClick={() => setRange(tab.id)}
+                className={
+                  "rounded-lg px-4 py-2 text-xs font-semibold transition-all " +
+                  (range === tab.id
+                    ? "bg-background text-foreground shadow-sm ring-1 ring-border/80 dark:bg-card"
+                    : "text-muted-foreground hover:text-foreground")
+                }
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          {rangeHighLow && rangeHighLow.hi > 0 ? (
+            <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs tabular-nums text-muted-foreground">
+              <span>
+                <span className="font-medium text-foreground/80">H </span>
+                {formatTooltipUsd(rangeHighLow.hi)}
+              </span>
+              <span>
+                <span className="font-medium text-foreground/80">L </span>
+                {formatTooltipUsd(rangeHighLow.lo)}
+              </span>
+            </div>
+          ) : null}
         </div>
 
-        {/* Chart */}
-        <div className="rounded-xl border border-border/60 bg-muted/10 p-2 sm:p-4 dark:bg-muted/5">
-          <div className="h-[220px] w-full min-h-[200px]">
+        {/* Chart — dark panel in dark mode, CMC-like grid + smooth area */}
+        <div
+          className={
+            "overflow-hidden rounded-2xl border border-border/60 shadow-inner " +
+            "bg-gradient-to-b from-muted/30 to-muted/5 dark:from-[#0f1419] dark:to-[#0a0e12] dark:border-white/[0.06]"
+          }
+        >
+          <div className="h-[240px] w-full min-h-[220px] sm:h-[280px]">
             {hydrated && chartData.length >= 2 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart
                   data={chartData}
-                  margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+                  margin={{ top: 12, right: 12, left: 4, bottom: 4 }}
                 >
                   <defs>
                     <linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
                       <stop
                         offset="0%"
                         stopColor={stroke}
-                        stopOpacity={0.35}
+                        stopOpacity={0.45}
+                      />
+                      <stop
+                        offset="55%"
+                        stopColor={stroke}
+                        stopOpacity={0.12}
                       />
                       <stop
                         offset="100%"
@@ -376,9 +471,10 @@ export function GrowthChart({
                     </linearGradient>
                   </defs>
                   <CartesianGrid
-                    strokeDasharray="3 3"
-                    vertical={false}
-                    className="stroke-border/50"
+                    strokeDasharray="4 4"
+                    vertical
+                    horizontal
+                    className="stroke-border/35 dark:stroke-white/[0.06]"
                   />
                   <XAxis
                     dataKey="t"
@@ -388,18 +484,32 @@ export function GrowthChart({
                     tickFormatter={(ts) => chartAxis.formatTick(ts as number)}
                     axisLine={false}
                     tickLine={false}
-                    tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
-                    padding={{ left: 4, right: 4 }}
+                    tick={{
+                      fontSize: 10,
+                      fill: "var(--muted-foreground)",
+                      opacity: 0.9,
+                    }}
+                    padding={{ left: 8, right: 8 }}
                   />
                   <YAxis
                     domain={["auto", "auto"]}
                     axisLine={false}
                     tickLine={false}
-                    tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
-                    tickFormatter={(v) => formatTooltipUsd(Number(v))}
-                    width={56}
+                    tick={{
+                      fontSize: 10,
+                      fill: "var(--muted-foreground)",
+                      opacity: 0.9,
+                    }}
+                    tickFormatter={(v) => formatAxisUsd(Number(v))}
+                    width={48}
                   />
                   <Tooltip
+                    cursor={{
+                      stroke: stroke,
+                      strokeWidth: 1,
+                      strokeOpacity: 0.5,
+                      strokeDasharray: "4 4",
+                    }}
                     content={({ active, payload }) => {
                       if (!active || !payload?.[0]) return null
                       const row = payload[0].payload as {
@@ -408,14 +518,20 @@ export function GrowthChart({
                         sol: number
                       }
                       return (
-                        <div className="rounded-lg border border-border bg-card px-3 py-2 text-sm shadow-lg">
-                          <p className="text-xs text-muted-foreground">
+                        <div
+                          className={
+                            "rounded-xl border px-3.5 py-2.5 text-sm shadow-xl " +
+                            "border-border/80 bg-card/95 backdrop-blur-sm " +
+                            "dark:border-white/10 dark:bg-[#151b22]/95"
+                          }
+                        >
+                          <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                             {new Date(row.t).toLocaleString()}
                           </p>
-                          <p className="font-semibold tabular-nums">
-                            {formatTooltipUsd(row.usd)}
+                          <p className="mt-1 text-lg font-semibold tabular-nums text-foreground">
+                            {formatHeroUsd(row.usd)}
                           </p>
-                          <p className="text-xs tabular-nums text-muted-foreground">
+                          <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">
                             {row.sol.toFixed(4)} SOL
                           </p>
                         </div>
@@ -423,13 +539,20 @@ export function GrowthChart({
                     }}
                   />
                   <Area
-                    type="monotone"
+                    type="basis"
                     dataKey="usd"
                     stroke={stroke}
-                    strokeWidth={2}
+                    strokeWidth={2.5}
                     fill={`url(#${fillId})`}
                     dot={false}
-                    activeDot={{ r: 4, strokeWidth: 0 }}
+                    activeDot={{
+                      r: 5,
+                      strokeWidth: 2,
+                      stroke: "var(--background)",
+                      fill: stroke,
+                    }}
+                    animationDuration={500}
+                    isAnimationActive
                   />
                 </AreaChart>
               </ResponsiveContainer>
@@ -439,9 +562,9 @@ export function GrowthChart({
               </div>
             )}
           </div>
-          <p className="mt-2 px-1 text-center text-[11px] leading-snug text-muted-foreground">
-            Value = locked SOL × live SOL price. History is saved on this device
-            so the line moves when price or balances change.
+          <p className="border-t border-border/40 px-3 py-2.5 text-center text-[10px] leading-relaxed text-muted-foreground dark:border-white/[0.06]">
+            Tracked value = locked SOL × live SOL price. History stays on this
+            device; the line updates when price or balances move.
           </p>
         </div>
 
