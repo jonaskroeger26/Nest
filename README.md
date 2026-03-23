@@ -15,7 +15,7 @@
 | Route pattern        | Default limit              | Notes                                      |
 | -------------------- | -------------------------- | ------------------------------------------ |
 | `/api/admin/*`       | **30** requests / min / IP | Expensive `getProgramAccounts` scans       |
-| `/api/solana-rpc`    | **120** requests / min / IP| Called when the app opens an RPC connection |
+| `/api/solana-rpc`    | **20** requests / min / IP | Called when the app opens an RPC connection |
 | `/api/cron/*`        | _not_ limited              | Use `Authorization: Bearer` secret instead |
 
 1. Create a free Redis database at [Upstash](https://console.upstash.com/).
@@ -36,8 +36,8 @@ npx tsx scripts/stress-test-rate-limit.ts https://your-app.vercel.app
 
 The script prints a **probe** line first: if you **don’t** see `X-RateLimit-Limit`, Upstash isn’t active on that deployment (wrong env / Preview vs Production / **old deploy before route-handler limits**).
 
-- Defaults: **350** requests, **80** concurrent (enough to exceed **120/min** on `/api/solana-rpc` in one burst).
-- Heavier: `npx tsx scripts/stress-test-rate-limit.ts your-app.vercel.app 600 120`
+- Defaults: **80** requests, **40** concurrent (enough to exceed **20/min** on `/api/solana-rpc` in one burst).
+- Heavier: `npx tsx scripts/stress-test-rate-limit.ts your-app.vercel.app 200 80`
 - Admin route (limit **30/min**):  
   `NEST_STRESS_PATH=/api/admin/nestdev npx tsx scripts/stress-test-rate-limit.ts your-app.vercel.app 60 30`
 

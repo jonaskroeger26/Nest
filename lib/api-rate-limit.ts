@@ -60,14 +60,14 @@ export function getAdminRatelimit(): Ratelimit | null {
   return adminLimiter
 }
 
-/** Public RPC URL proxy: default 120 req / minute / IP. */
+/** Public RPC URL proxy: default 20 req / minute / IP. */
 export function getSolanaRpcRatelimit(): Ratelimit | null {
   const redis = getRedis()
   if (!redis) return null
   if (!rpcLimiter) {
     const perMinute = parsePositiveInt(
       process.env.NEST_RATE_LIMIT_RPC_PER_MINUTE,
-      120
+      20
     )
     rpcLimiter = new Ratelimit({
       redis,

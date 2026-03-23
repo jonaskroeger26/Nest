@@ -11,8 +11,8 @@
  * Env overrides:
  *   NEST_STRESS_BASE_URL   — if set, used when no URL arg
  *   NEST_STRESS_PATH       — default /api/solana-rpc (e.g. /api/admin/nestdev)
- *   NEST_STRESS_TOTAL      — default 350 (must exceed 120/min RPC default)
- *   NEST_STRESS_CONCURRENCY — default 80 (finish burst inside one minute)
+ *   NEST_STRESS_TOTAL      — default 80 (must exceed 20/min RPC default)
+ *   NEST_STRESS_CONCURRENCY — default 40 (finish burst inside one minute)
  *
  * Expect: many 200 (or 401 on admin without cookie), then 429 once you exceed the per-minute limit.
  * If you get zero 429s, run the probe line: no X-RateLimit-* usually means Upstash env missing on Vercel.
@@ -63,17 +63,17 @@ function parseArgs(): {
   if (!path.startsWith("/")) path = "/" + path
 
   const nums = argv.filter((a) => /^\d+$/.test(a)).map((a) => Number(a))
-  const total = nums[0] ?? Number(process.env.NEST_STRESS_TOTAL ?? "350")
-  const concurrency = nums[1] ?? Number(process.env.NEST_STRESS_CONCURRENCY ?? "80")
+  const total = nums[0] ?? Number(process.env.NEST_STRESS_TOTAL ?? "80")
+  const concurrency = nums[1] ?? Number(process.env.NEST_STRESS_CONCURRENCY ?? "40")
 
   return {
     base: normalizeBase(base),
     path,
-    total: Number.isFinite(total) && total > 0 ? Math.min(total, 50_000) : 350,
+    total: Number.isFinite(total) && total > 0 ? Math.min(total, 50_000) : 80,
     concurrency:
       Number.isFinite(concurrency) && concurrency > 0
         ? Math.min(concurrency, 200)
-        : 80,
+        : 40,
   }
 }
 
@@ -196,7 +196,7 @@ async function main() {
     // eslint-disable-next-line no-console
     console.log(
       "\nNo 429 yet. If the probe showed no X-RateLimit-* headers, fix Vercel env + redeploy first.\n" +
-        "Otherwise: raise total (e.g. 600), raise concurrency (e.g. 120), or temporarily set NEST_RATE_LIMIT_RPC_PER_MINUTE=20."
+        "Otherwise: raise total (e.g. 200), raise concurrency (e.g. 80), or temporarily lower NEST_RATE_LIMIT_RPC_PER_MINUTE on Vercel."
     )
   } else {
     // eslint-disable-next-line no-console
