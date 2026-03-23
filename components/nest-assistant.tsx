@@ -541,7 +541,7 @@ export function NestAssistant() {
                   <Input
                     id={inputId}
                     value={input}
-                    onChange={(e) => setInput(e.targetValue)}
+                    onChange={(e) => setInput(e.target.value)}
                     placeholder="e.g. Can grandparents send SOL?"
                     className="flex-1"
                     autoComplete="off"

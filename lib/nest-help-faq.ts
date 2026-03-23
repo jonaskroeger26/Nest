@@ -577,7 +577,9 @@ export function matchNestFaq(query: string): NestFaqEntry | null {
 
 /** Filter entries by chip search (title + keywords). */
 export function filterFaqEntries(search: string, limit = 20): NestFaqEntry[] {
-  const q = search.trim().toLowerCase()
+  const q = String(search ?? "")
+    .trim()
+    .toLowerCase()
   if (!q) return NEST_FAQ_ENTRIES.slice(0, limit)
   return NEST_FAQ_ENTRIES.filter((e) => {
     if (e.title.toLowerCase().includes(q)) return true
