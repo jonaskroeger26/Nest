@@ -1,13 +1,10 @@
 "use client"
 
 import { useId, useMemo, useState } from "react"
-import { Activity, LineChart, Lock, Users } from "lucide-react"
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card"
 import { useChildren } from "@/context/children-context"
 import type { Child } from "@/context/children-context"
@@ -32,9 +29,9 @@ import {
   YAxis,
 } from "recharts"
 
-/** Child list avatars — soft primary tint */
+/** Child initials — neutral, document-style */
 const avatar =
-  "bg-primary/15 text-primary dark:bg-primary/20 dark:text-primary"
+  "border border-border/80 bg-muted/50 text-muted-foreground dark:bg-muted/30"
 
 const RANGE_TABS: { id: PortfolioRange; label: string }[] = [
   { id: "1d", label: "24H" },
@@ -192,8 +189,9 @@ export function GrowthChart({
   const chartUid = useId().replace(/:/g, "")
   const rangeChange = pctChangeInRange(range)
   const up = rangeChange != null && rangeChange >= 0
-  const stroke = up ? "var(--chart-1)" : "var(--destructive)"
-  const fillId = `nest-port-${chartUid}-${up ? "u" : "d"}`
+  /** Neutral series stroke — direction is communicated in KPIs, not chart hue */
+  const chartStroke = "var(--foreground)"
+  const fillId = `nest-port-${chartUid}`
 
   /** Points in view + anchors so the X-axis always matches the selected range. */
   const { chartData, viewStart, viewEnd } = useMemo(() => {
@@ -319,12 +317,12 @@ export function GrowthChart({
 
   if (children.length === 0) {
     return (
-      <Card className="overflow-hidden rounded-2xl border border-border/80 bg-card shadow-sm">
-        <CardContent className="p-6">
-          <div className="flex min-h-[180px] items-center justify-center rounded-xl border border-dashed border-border bg-muted/20 px-6 py-10">
-            <p className="max-w-[300px] text-center text-sm leading-relaxed text-muted-foreground">
-              Add a child and lock SOL to see portfolio value over time. History
-              is saved on this device.
+      <Card className="gap-0 overflow-hidden rounded-xl border border-border bg-card py-0 shadow-[0_1px_2px_rgba(15,23,42,0.06)] dark:shadow-none">
+        <CardContent className="p-8">
+          <div className="flex min-h-[160px] items-center justify-center rounded-lg border border-dashed border-border/80 bg-muted/15 px-6 py-12">
+            <p className="max-w-[320px] text-center text-[13px] leading-relaxed text-muted-foreground">
+              Add a child and lock SOL to track portfolio value. Local history
+              appears after your first snapshots.
             </p>
           </div>
         </CardContent>
@@ -342,64 +340,60 @@ export function GrowthChart({
           : "All"
 
   return (
-    <Card className="gap-0 overflow-hidden rounded-2xl border border-border/80 py-0 shadow-sm">
-      <CardHeader className="border-b border-border/60 bg-gradient-to-br from-primary/[0.07] via-card to-card px-6 pb-5 pt-6 dark:from-primary/10 dark:via-card dark:to-card sm:px-8">
-        <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+    <Card className="gap-0 overflow-hidden rounded-xl border border-border bg-card py-0 shadow-[0_1px_2px_rgba(15,23,42,0.06)] dark:shadow-none">
+      <CardHeader className="border-b border-border/80 px-6 py-6 sm:px-8 sm:py-7">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10">
-                <LineChart className="h-4 w-4 text-primary" aria-hidden />
-              </div>
-              <CardTitle className="text-xl font-semibold tracking-tight">
-                Portfolio
-              </CardTitle>
-            </div>
-            <CardDescription className="max-w-md pl-11 text-pretty">
-              Locked SOL in USD. History is stored on this device for your
-              timeline.
-            </CardDescription>
+            <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+              Portfolio
+            </p>
+            <p className="text-[13px] text-muted-foreground">
+              Estimated value of locked SOL (USD). History is stored locally.
+            </p>
           </div>
-          <div className="flex flex-col items-start gap-2 sm:items-end">
+          <div className="flex flex-col gap-1 lg:items-end">
             {currentUsd != null ? (
               <>
-                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                  <p className="text-3xl font-bold tabular-nums tracking-tight text-foreground sm:text-4xl">
+                <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                  Total value
+                </p>
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <p className="text-3xl font-semibold tabular-nums tracking-tight text-foreground sm:text-[2rem] sm:leading-none">
                     {formatHeroUsd(currentUsd)}
                   </p>
                   {rangeChange != null ? (
                     <span
                       className={
-                        "rounded-full px-2.5 py-0.5 text-sm font-semibold tabular-nums " +
-                        (up
-                          ? "bg-primary/15 text-primary"
-                          : "bg-destructive/12 text-destructive")
+                        "text-sm font-medium tabular-nums " +
+                        (up ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400")
                       }
                     >
-                      {formatPctChange(rangeChange)}{" "}
-                      <span className="font-medium text-muted-foreground">
-                        {rangeLabel}
-                      </span>
+                      {formatPctChange(rangeChange)}
+                      <span className="text-muted-foreground"> {rangeLabel}</span>
                     </span>
                   ) : null}
                 </div>
-                <p className="text-sm tabular-nums text-muted-foreground">
+                <p className="text-[13px] tabular-nums text-muted-foreground">
                   {totalSol.toFixed(4)} SOL
                   {usd != null ? (
-                    <span> · {solToUsdFormatted(1, usd)} / SOL</span>
+                    <span className="text-muted-foreground/80">
+                      {" "}
+                      · Ref. {solToUsdFormatted(1, usd)} / SOL
+                    </span>
                   ) : null}
                 </p>
               </>
             ) : (
-              <p className="text-sm text-muted-foreground">Loading price…</p>
+              <p className="text-sm text-muted-foreground">Loading spot price…</p>
             )}
           </div>
         </div>
       </CardHeader>
 
-      <CardContent className="space-y-5 px-6 py-6 sm:px-8 sm:py-7">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <CardContent className="space-y-6 px-6 py-6 sm:px-8 sm:py-8">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div
-            className="inline-flex w-fit flex-wrap rounded-xl border border-border/70 bg-muted/35 p-1 dark:bg-muted/25"
+            className="inline-flex w-fit rounded-md border border-border bg-muted/30 p-0.5 dark:bg-muted/20"
             role="tablist"
             aria-label="Chart range"
           >
@@ -411,9 +405,9 @@ export function GrowthChart({
                 aria-selected={range === tab.id}
                 onClick={() => setRange(tab.id)}
                 className={
-                  "rounded-lg px-3.5 py-2 text-sm font-medium transition-all " +
+                  "rounded-[5px] px-3 py-1.5 text-xs font-medium transition-colors " +
                   (range === tab.id
-                    ? "bg-card text-foreground shadow-sm ring-1 ring-border/80"
+                    ? "bg-background text-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground")
                 }
               >
@@ -422,39 +416,39 @@ export function GrowthChart({
             ))}
           </div>
           {rangeHighLow && rangeHighLow.hi > 0 ? (
-            <p className="text-xs tabular-nums text-muted-foreground">
-              High {formatTooltipUsd(rangeHighLow.hi)} · Low{" "}
+            <p className="text-[11px] tabular-nums text-muted-foreground">
+              Range · High {formatTooltipUsd(rangeHighLow.hi)} · Low{" "}
               {formatTooltipUsd(rangeHighLow.lo)}
             </p>
           ) : null}
         </div>
 
-        <div className="rounded-xl border border-border/70 bg-card p-1 shadow-inner dark:bg-card/80">
-          <div className="h-[240px] w-full min-h-[220px] sm:h-[280px]">
+        <div className="overflow-hidden rounded-lg border border-border/80 bg-muted/20">
+          <div className="h-[260px] w-full min-h-[240px] sm:h-[300px]">
             {hydrated && chartData.length >= 2 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart
                   data={chartData}
-                  margin={{ top: 8, right: 4, left: 0, bottom: 4 }}
+                  margin={{ top: 12, right: 8, left: 4, bottom: 8 }}
                 >
                   <defs>
                     <linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
                       <stop
                         offset="0%"
-                        stopColor={stroke}
-                        stopOpacity={0.22}
+                        stopColor={chartStroke}
+                        stopOpacity={0.11}
                       />
                       <stop
                         offset="100%"
-                        stopColor={stroke}
+                        stopColor={chartStroke}
                         stopOpacity={0}
                       />
                     </linearGradient>
                   </defs>
                   <CartesianGrid
-                    strokeDasharray="3 3"
+                    strokeDasharray="4 4"
                     vertical={false}
-                    className="stroke-border/40 dark:stroke-border/25"
+                    className="stroke-border/30 dark:stroke-border/20"
                   />
                   <XAxis
                     dataKey="t"
@@ -465,7 +459,7 @@ export function GrowthChart({
                     axisLine={false}
                     tickLine={false}
                     tick={{
-                      fontSize: 11,
+                      fontSize: 10,
                       fill: "var(--muted-foreground)",
                     }}
                     padding={{ left: 4, right: 4 }}
@@ -475,18 +469,18 @@ export function GrowthChart({
                     axisLine={false}
                     tickLine={false}
                     tick={{
-                      fontSize: 11,
+                      fontSize: 10,
                       fill: "var(--muted-foreground)",
                     }}
                     tickFormatter={(v) => formatAxisUsd(Number(v))}
-                    width={44}
+                    width={48}
                   />
                   <Tooltip
                     cursor={{
                       stroke: "var(--border)",
                       strokeWidth: 1,
-                      strokeOpacity: 0.9,
-                      strokeDasharray: "4 4",
+                      strokeOpacity: 0.85,
+                      strokeDasharray: "3 3",
                     }}
                     content={({ active, payload }) => {
                       if (!active || !payload?.[0]) return null
@@ -496,14 +490,14 @@ export function GrowthChart({
                         sol: number
                       }
                       return (
-                        <div className="rounded-lg border border-border bg-popover px-3 py-2 text-sm shadow-md">
-                          <p className="text-xs text-muted-foreground">
+                        <div className="rounded-md border border-border bg-popover px-3 py-2.5 text-sm shadow-lg">
+                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
                             {new Date(row.t).toLocaleString()}
                           </p>
-                          <p className="mt-0.5 font-semibold tabular-nums text-foreground">
+                          <p className="mt-1 font-semibold tabular-nums text-foreground">
                             {formatHeroUsd(row.usd)}
                           </p>
-                          <p className="text-xs tabular-nums text-muted-foreground">
+                          <p className="text-[11px] tabular-nums text-muted-foreground">
                             {row.sol.toFixed(4)} SOL
                           </p>
                         </div>
@@ -521,117 +515,135 @@ export function GrowthChart({
                   <Line
                     type="monotone"
                     dataKey="usd"
-                    stroke={stroke}
-                    strokeWidth={2}
+                    stroke={chartStroke}
+                    strokeOpacity={0.55}
+                    strokeWidth={1.75}
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     dot={false}
                     activeDot={{
-                      r: 5,
+                      r: 4,
                       strokeWidth: 2,
                       stroke: "var(--background)",
-                      fill: stroke,
+                      fill: "var(--foreground)",
                     }}
-                    animationDuration={400}
+                    animationDuration={320}
                     isAnimationActive
                   />
                 </ComposedChart>
               </ResponsiveContainer>
             ) : (
-              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+              <div className="flex h-full items-center justify-center text-[13px] text-muted-foreground">
                 Preparing chart…
               </div>
             )}
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="flex items-center gap-3 rounded-xl border border-border/60 bg-muted/20 px-4 py-3.5 dark:bg-muted/10">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10">
-              <Lock className="h-5 w-5 text-primary" aria-hidden />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs font-medium text-muted-foreground">
-                Locked
+        <div className="grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-3">
+          <div className="bg-card px-5 py-4">
+            <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+              Locked principal
+            </p>
+            <p className="mt-2 text-xl font-semibold tabular-nums tracking-tight text-foreground">
+              {totalSol.toFixed(2)}{" "}
+              <span className="text-sm font-normal text-muted-foreground">SOL</span>
+            </p>
+            {usd != null && totalSol > 0 ? (
+              <p className="mt-1 text-[12px] tabular-nums text-muted-foreground">
+                ≈ {solToUsdFormatted(totalSol, usd)}
               </p>
-              <p className="text-lg font-bold tabular-nums text-foreground">
-                {totalSol.toFixed(2)}{" "}
-                <span className="text-sm font-semibold text-muted-foreground">
-                  SOL
-                </span>
-              </p>
-              {usd != null && totalSol > 0 ? (
-                <p className="text-xs tabular-nums text-muted-foreground">
-                  {solToUsdFormatted(totalSol, usd)}
-                </p>
-              ) : null}
-            </div>
+            ) : null}
           </div>
-          <div className="flex items-center gap-3 rounded-xl border border-border/60 bg-muted/20 px-4 py-3.5 dark:bg-muted/10">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10">
-              <Users className="h-5 w-5 text-primary" aria-hidden />
-            </div>
-            <div>
-              <p className="text-xs font-medium text-muted-foreground">
-                Children
-              </p>
-              <p className="text-lg font-bold tabular-nums text-foreground">
-                {children.length}
-              </p>
-            </div>
+          <div className="bg-card px-5 py-4">
+            <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+              Beneficiaries
+            </p>
+            <p className="mt-2 text-xl font-semibold tabular-nums tracking-tight text-foreground">
+              {children.length}
+            </p>
           </div>
-          <div className="flex items-center gap-3 rounded-xl border border-border/60 bg-muted/20 px-4 py-3.5 dark:bg-muted/10">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10">
-              <Activity className="h-5 w-5 text-primary" aria-hidden />
-            </div>
-            <div>
-              <p className="text-xs font-medium text-muted-foreground">24h</p>
-              <p
-                className={
-                  "text-lg font-bold tabular-nums " +
-                  (stats.change1d == null
-                    ? "text-muted-foreground"
-                    : stats.change1d >= 0
-                      ? "text-primary"
-                      : "text-destructive")
-                }
-              >
-                {formatPctChange(stats.change1d)}
-              </p>
-            </div>
+          <div className="bg-card px-5 py-4">
+            <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+              24h move (USD)
+            </p>
+            <p
+              className={
+                "mt-2 text-xl font-semibold tabular-nums tracking-tight " +
+                (stats.change1d == null
+                  ? "text-muted-foreground"
+                  : stats.change1d >= 0
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : "text-red-600 dark:text-red-400")
+              }
+            >
+              {formatPctChange(stats.change1d)}
+            </p>
           </div>
         </div>
 
         <div>
-          <h3 className="mb-3 text-sm font-semibold text-foreground">
-            By child
-          </h3>
-          <ul className="space-y-1 rounded-xl border border-border/60 bg-muted/10 p-1.5 dark:bg-muted/5">
-            {children.map((c, i) => (
-              <li
-                key={`${c.name}-${i}`}
-                className="flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-muted/50"
-              >
-                <div
-                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${avatar}`}
-                  aria-hidden
-                >
-                  {initials(c.name)}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium text-foreground">
-                    {c.name}
-                  </p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {goalSubtitle(c)}
-                  </p>
-                </div>
-                <p className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
-                  {c.totalSaved.toFixed(2)} SOL
-                </p>
-              </li>
-            ))}
-          </ul>
+          <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            Allocation by beneficiary
+          </p>
+          <div className="overflow-hidden rounded-lg border border-border">
+            <table className="w-full text-left text-[13px]">
+              <thead>
+                <tr className="border-b border-border bg-muted/30 dark:bg-muted/15">
+                  <th className="px-4 py-2.5 font-medium text-muted-foreground">
+                    Name
+                  </th>
+                  <th className="hidden px-4 py-2.5 font-medium text-muted-foreground sm:table-cell">
+                    Goal
+                  </th>
+                  <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">
+                    SOL
+                  </th>
+                  {usd != null ? (
+                    <th className="hidden px-4 py-2.5 text-right font-medium text-muted-foreground md:table-cell">
+                      Est. USD
+                    </th>
+                  ) : null}
+                </tr>
+              </thead>
+              <tbody>
+                {children.map((c, i) => (
+                  <tr
+                    key={`${c.name}-${i}`}
+                    className="border-b border-border/80 last:border-0 hover:bg-muted/25"
+                  >
+                    <td className="px-4 py-3 align-middle">
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[11px] font-medium ${avatar}`}
+                          aria-hidden
+                        >
+                          {initials(c.name)}
+                        </div>
+                        <span className="font-medium text-foreground">
+                          {c.name}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="hidden max-w-[200px] truncate px-4 py-3 text-muted-foreground sm:table-cell">
+                      {goalSubtitle(c)}
+                    </td>
+                    <td className="px-4 py-3 text-right font-medium tabular-nums text-foreground">
+                      {c.totalSaved.toFixed(2)}
+                    </td>
+                    {usd != null ? (
+                      <td className="hidden px-4 py-3 text-right tabular-nums text-muted-foreground md:table-cell">
+                        {solToUsdFormatted(c.totalSaved, usd)}
+                      </td>
+                    ) : null}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            USD figures use the live SOL reference shown above.
+          </p>
         </div>
       </CardContent>
     </Card>
